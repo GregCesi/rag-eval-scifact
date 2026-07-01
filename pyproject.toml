@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-eval-scifact"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sentence-transformers",
+    "chromadb",
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+include = ["rag_eval_scifact*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]

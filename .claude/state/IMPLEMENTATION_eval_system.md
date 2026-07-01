@@ -80,23 +80,23 @@ Deux colonnes distinctes en fin de ligne :
 
 **Livrables :**
 
-- [ ] 1.1 — `metrics.py` — Recall@k :
+- [x] 1.1 — `metrics.py` — Recall@k :
   - `recall_at_k(retrieved_ids: list[str], relevant_ids: set[str], k: int) -> float`
   - Pour une requête : parmi les top-k ramenés, quelle fraction des docs pertinents est présente ?
   - Recall@k = |{docs pertinents ∩ top-k}| / |{docs pertinents}|
   - Macro-average sur les 300 requêtes
-- [ ] 1.2 — `metrics.py` — nDCG@10 :
+- [x] 1.2 — `metrics.py` — nDCG@10 :
   - `ndcg_at_k(retrieved_ids: list[str], relevant_ids: set[str], k: int) -> float`
   - DCG@k = Σᵢ₌₁ᵏ relᵢ / log₂(i+1) — relevance **binaire** (1/0). Convention pytrec_eval/BEIR exacte : rang 1 → log₂(2)=1. Avec relevance binaire, gain linéaire = gain exponentiel (2^rel−1), aucune ambiguïté. **Ne pas modifier cette formule.**
   - IDCG@k = DCG du classement parfait (les docs pertinents en premier)
   - nDCG@k = DCG / IDCG. Si IDCG = 0 → retourner 0.0 (garde-fou division par zéro). **Sur SciFact test, chaque requête a >= 1 doc pertinent, donc ce cas ne se déclenche jamais** — le garde-fou est là par sécurité.
   - Macro-average sur les 300 requêtes
-- [ ] 1.3 — `metrics.py` — MRR :
+- [x] 1.3 — `metrics.py` — MRR :
   - `mrr(retrieved_ids: list[str], relevant_ids: set[str]) -> float`
   - Pour une requête : 1/rang du premier doc pertinent trouvé (0 si aucun trouvé dans top-100)
   - Note : doc pertinent au-delà du rang 100 → contribution MRR = 0. Cohérent avec la profondeur de log top-100 (on ne mesure rien au-delà). À documenter en commentaire dans `metrics.py`.
   - Macro-average sur les 300 requêtes
-- [ ] 1.4 — Tests unitaires `test_metrics.py` avec **oracles numériques écrits en dur** (calculés indépendamment du code, pas par les mêmes fonctions testées) :
+- [x] 1.4 — Tests unitaires `test_metrics.py` avec **oracles numériques écrits en dur** (calculés indépendamment du code, pas par les mêmes fonctions testées) :
 
   | Cas | Setup | R@1 | R@5 | R@10 | R@100 | MRR | nDCG@10 |
   |---|---|---|---|---|---|---|---|
@@ -114,9 +114,9 @@ Deux colonnes distinctes en fin de ligne :
   Tolérance : 1e-4 sur toutes les comparaisons flottantes.
 
 ✋ Verify before continuing:
-- [ ] Aucun import de `pytrec_eval`, `beir.retrieval.evaluation`, `sentence_transformers.evaluation` ou lib d'éval équivalente — ref `.claude/rules/methodologie.md`
-- [ ] Chaque cas de test compare à sa valeur numérique oracle écrite en dur ci-dessus (tolérance 1e-4)
-- [ ] nDCG gère correctement le cas IDCG = 0 (pas de division par zéro)
+- [x] Aucun import de `pytrec_eval`, `beir.retrieval.evaluation`, `sentence_transformers.evaluation` ou lib d'éval équivalente — ref `.claude/rules/methodologie.md`
+- [x] Chaque cas de test compare à sa valeur numérique oracle écrite en dur ci-dessus (tolérance 1e-4)
+- [x] nDCG gère correctement le cas IDCG = 0 (pas de division par zéro)
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
@@ -128,23 +128,23 @@ Si tout est OK : "go". Sinon dis ce qui cloche.
 
 **Livrables :**
 
-- [ ] 2.1 — `run_output.py` — Génération JSON :
+- [x] 2.1 — `run_output.py` — Génération JSON :
   - Assembler le JSON niveau run (version, date, config, métriques agrégées)
   - **`dataset_hash` : lu depuis la metadata de la collection ChromaDB** (calculé et stocké par `ingest.py`, cf. `IMPLEMENTATION_rag_ingestion_retrieval.md` A4) — ne pas recalculer
   - Assembler le JSON niveau requête (query_id, query_text, expected_docs avec token_count, top-100 avec rang+score, per_query_metrics)
   - Écrire dans `results/{version}-{date}.json`
-- [ ] 2.2 — `run_output.py` — Append RESULTS.md :
+- [x] 2.2 — `run_output.py` — Append RESULTS.md :
   - Si `RESULTS.md` n'existe pas, créer avec header du tableau
   - Append une ligne avec les 6 métriques + colonne dette `max_seq=256` + colonne note d'analyse (vide par défaut, remplie à la main post-run)
   - Ne jamais réécrire les lignes existantes (append-only strict)
-- [ ] 2.3 — `per_query_metrics` : pour chaque requête, calculer :
+- [x] 2.3 — `per_query_metrics` : pour chaque requête, calculer :
   - `found@k` (bool) = **au moins un doc pertinent dans le top-k** (coincide avec Recall@k > 0 ; booléen de succès, pas une fraction)
   - `best_rank` (int | null) = **rang du premier doc pertinent** rencontré dans le top-100 (celui qui fournit le MRR), ou `null` si aucun trouvé
 
 ✋ Verify before continuing:
-- [ ] Le JSON contient `token_count` pour chaque doc attendu (sinon dette troncature non jugeable)
-- [ ] `RESULTS.md` mentionne explicitement la dette troncature 256 tokens — ref `.claude/rules/invariants.md`
-- [ ] Le fichier JSON est horodaté et nommé de manière unique par run
+- [x] Le JSON contient `token_count` pour chaque doc attendu (sinon dette troncature non jugeable)
+- [x] `RESULTS.md` mentionne explicitement la dette troncature 256 tokens — ref `.claude/rules/invariants.md`
+- [x] Le fichier JSON est horodaté et nommé de manière unique par run
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
@@ -156,18 +156,18 @@ Si tout est OK : "go". Sinon dis ce qui cloche.
 
 **Livrables :**
 
-- [ ] 3.1 — `run_eval.py` — Orchestrateur :
+- [x] 3.1 — `run_eval.py` — Orchestrateur :
   - Charger la collection ChromaDB (ingérée par `ingest.py`)
   - Exécuter le retrieval sur les 300 requêtes test (appel à la logique de `retrieve.py`)
   - Calculer les 6 métriques agrégées + per-query via `metrics.py`
   - Générer les artefacts via `run_output.py`
   - Afficher un résumé console des résultats
-- [ ] 3.2 — Intégration `dataset_hash` : vérifier que le hash du corpus au moment du run correspond à celui de l'ingestion
+- [x] 3.2 — Intégration `dataset_hash` : vérifier que le hash du corpus au moment du run correspond à celui de l'ingestion
 
 ✋ Verify before continuing:
-- [ ] Un run complet produit `RESULTS.md` (ligne ajoutée) + `results/*.json` (fichier créé)
-- [ ] Le run est reproductible : même corpus → même hash → mêmes métriques
-- [ ] Rappel post-run : **commiter les artefacts + taguer** (run non commité = run inexistant) — ref `.claude/rules/versioning.md`
+- [x] Un run complet produit `RESULTS.md` (ligne ajoutée) + `results/*.json` (fichier créé)
+- [x] Le run est reproductible : même corpus → même hash → mêmes métriques
+- [x] Rappel post-run : **commiter les artefacts + taguer** (run non commité = run inexistant) — ref `.claude/rules/versioning.md`
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
