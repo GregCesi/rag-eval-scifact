@@ -1,0 +1,54 @@
+{
+  "48": {
+    "categorie": "",
+    "note": "Creutzfeldt-Jakob dans le rang 1 et 2. Quel est le rapport ? \n\nDocument originel vCJD est répété uniquement 3 fois mais est tronqué. Beaucoup de chiffre et calcul dans la réponse. \nrang 1 vCJD est répété 4 fois\nrang 2 2 fois (1 tronqué 1 non tronqué)\nrang 3 aucun\nrang 4 et 5 aucun, mais contiennent beaucoup de chiffre et calcul."
+  },
+  "132": {
+    "categorie": "Complet",
+    "note": "Le document cible répond à la question clairement mais négativement. Elle ne contient pas PGE2 mais parle de \"melanoma and other cancer cells evade anti-tumor immunity\". \n\nrang-1 : 4 fois le mot dans la partie non-tronqué 2 fois dans la partie tronqué : explique dans quoi la prostaglandins ( pgs ) est impliqué, ne repond pas directement à la question\nrang-2 : On parle d'aspirine cette fois de CAPP2, pas de PGE2. on parle quand meme de tumeur et de cancer\nrang-3 : on reparle de PGE2, semble plus technique\nrang-4 : Parle plus d'asprine et pas de PGE2\nrang-5 : ( pge ( 2 ), mais ecrit d'une autre facon. \n\nJe remarque que aucun des rang ne permet vraiment de répondre a la question tandis que le doc cible y tend. Ma question est presque est-ce que avec les 5 docs trouver un llm leger aurait pu répondre correctement a la question."
+  },
+  "303": {
+    "categorie": "",
+    "note": "Bon je fais rapide celle la mais j'ai l'impression pareil les top n'essaye pas de répondre à la question mais parle de sujet technique autour permettant potentiellement de répondre à la question."
+  },
+  "312": {
+    "categorie": "",
+    "note": "Ok le document attendu est intéressant, le passage intéressant a l'air d'être celui-ci : \n\nIn phase 1, a de novo assembly approach was developed to obtain a draft genome of the outbreak strain. in phase 2, the depth of coverage of the outbreak strain genome was determined in each sample. in phase 3, sequences from each sample were compared with sequences from known bacteria to identify pathogens other than the outbreak strain. main outcomes and measures the recovery of genome sequence data for the purposes of identification and characterization\n\nLes autres documents parlent de genome de de novo, donc sont plutot perspicace mais ne contient pas une réponse exact comme le doc attendu. Je tiens a préciser que la question c'est A par rapport a B. \n\nDans le rang-1 : j'ai identifié cela : however, ngs poses new computational challenges to de novo genome assembly. among the challenges, gc bias in ngs data is known to aggravate genome assembly. J'ai l'impression qu'on en parle mais pas comme une affirmation. \n\nrang-2 : on a cette phrase : . Here we present the Trinity method for de novo assembly of full-length transcripts and evaluate it on samples from fission yeast, mouse and whitefly, whose reference genome is not yet available. \n\nrang-3 : j'ai beaucoup de mal a comprendre ce qu'il fais la, on a ca a la limite :  results we implemented burrows - wheeler alignment tool ( bwa ), a new read alignment package that is based on backward search with burrows - wheeler transform ( bwt ), to efficiently align short sequencing reads against a large reference sequence such as the human genome, allowing mismatches and gaps\nOn parle toujours de genome de sequence ADN ont est dans le thème mais on repond pas clairement. \n\nrang-4 : Bon on parle aussi de abondance de plus par rapport a de novo. Le 4 est dans le thème on parle de seq data on recupère l'abréger. Intéressant.\n\nrang-5 : je comprend un peu moins pourquoi elle est la."
+  },
+  "421": {
+    "categorie": "C ou Q (difficile a définir)",
+    "note": "Très compliqué celui-la. J'ai du mal a le catégoriser. Ce n'est pas un T, On a un beaucoup de reformulation entre la question et la réponses : microenviroment par milieu\nBon en général on est dans le bon domaine je dirais plus C ou Q"
+  },
+  "437": {
+    "categorie": "Q",
+    "note": "Doc attendu a presque aucun vocabulaire commun. \n\nLes tops-rang contiennent tous Myelodysplastic contrairement au doc attendu. Bon je ne comprend pas tout mais j'ai l'impression que la c'etait très technique. Ca ressemble a du Q"
+  },
+  "502": {
+    "categorie": "C",
+    "note": "Bon question précise mais la réponse n'est pas précise.Elle parle d'un cas particulier. \n\nBref meme la réponse semble fausse, je suis perdu..."
+  },
+  "660": {
+    "categorie": "C",
+    "note": "Lien très complexe entre deux élements"
+  },
+  "690": {
+    "categorie": "C (T secondaire)",
+    "note": "Le doc attendu parle d'enfant gabonais comme la question.\n\nLes rang 2 et 3 d'enfants. \n\nPersonne parle du SFM. le 4 du lactate. \n\nDonc C ou Q, enfaite je pense plutot C, je m'explique, la on cherche a repondre une question sur des gabonese children. La reponse contient gabonese children."
+  },
+  "785": {
+    "categorie": "T",
+    "note": "On est clairement sur un T les deux termes microarray et culture amplification sont tronquées"
+  },
+  "820": {
+    "categorie": "C (BM25-récupérable)",
+    "note": ""
+  },
+  "821": {
+    "categorie": "DOUBLON ?",
+    "note": ""
+  },
+  "831": {
+    "categorie": "Q",
+    "note": "Le coeur NF2 ou Merlin n'existe pas.\nLes top rang parle de drosophile contrairement au doc attendu. qui parle directement de YAP, plus rapide. \n\nEn gros aucun doc ne repond parfaitement a la question."
+  }
+}

@@ -1,0 +1,1510 @@
+{
+  "counts": {
+    "perfect": 151,
+    "near_miss": 87,
+    "deep_miss": 40,
+    "miss_100": 22
+  },
+  "queries": {
+    "1": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.2915562093257904
+    },
+    "3": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.6018849611282349
+    },
+    "5": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.3938259184360504
+    },
+    "13": {
+      "bucket": "deep_miss",
+      "best_rank": 17,
+      "score": 0.4073798358440399
+    },
+    "36": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.6483836770057678
+    },
+    "42": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6757733225822449
+    },
+    "48": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "49": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6757104396820068
+    },
+    "50": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5334624648094177
+    },
+    "51": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7292471528053284
+    },
+    "53": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7209128141403198
+    },
+    "54": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6922899484634399
+    },
+    "56": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7317166328430176
+    },
+    "57": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7386192679405212
+    },
+    "70": {
+      "bucket": "deep_miss",
+      "best_rank": 15,
+      "score": 0.5349801778793335
+    },
+    "72": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5012381076812744
+    },
+    "75": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5839076042175293
+    },
+    "94": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.38287463784217834
+    },
+    "99": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.42019912600517273
+    },
+    "100": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5979037880897522
+    },
+    "113": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7787501811981201
+    },
+    "115": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.660144031047821
+    },
+    "118": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.737442672252655
+    },
+    "124": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7542526125907898
+    },
+    "127": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4308633804321289
+    },
+    "128": {
+      "bucket": "deep_miss",
+      "best_rank": 74,
+      "score": 0.24563412368297577
+    },
+    "129": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6347171664237976
+    },
+    "130": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6952363848686218
+    },
+    "132": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "133": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5655173659324646
+    },
+    "137": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7988847494125366
+    },
+    "141": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6109848618507385
+    },
+    "142": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.698012113571167
+    },
+    "143": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7155556678771973
+    },
+    "146": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7514550685882568
+    },
+    "148": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6243864297866821
+    },
+    "163": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.8069965839385986
+    },
+    "171": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.751059889793396
+    },
+    "179": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7589994668960571
+    },
+    "180": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6348589062690735
+    },
+    "183": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6089268326759338
+    },
+    "185": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6353380084037781
+    },
+    "198": {
+      "bucket": "deep_miss",
+      "best_rank": 81,
+      "score": 0.19863981008529663
+    },
+    "208": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5175504684448242
+    },
+    "212": {
+      "bucket": "near_miss",
+      "best_rank": 6,
+      "score": 0.5247618556022644
+    },
+    "213": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.46357595920562744
+    },
+    "216": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6385043859481812
+    },
+    "217": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6437551975250244
+    },
+    "218": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7442986965179443
+    },
+    "219": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7366204261779785
+    },
+    "230": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6172462701797485
+    },
+    "232": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7790353894233704
+    },
+    "233": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5720697045326233
+    },
+    "236": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5244597792625427
+    },
+    "237": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6907756924629211
+    },
+    "238": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5405932664871216
+    },
+    "239": {
+      "bucket": "deep_miss",
+      "best_rank": 24,
+      "score": 0.4803307056427002
+    },
+    "248": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5011765360832214
+    },
+    "249": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5018280744552612
+    },
+    "261": {
+      "bucket": "near_miss",
+      "best_rank": 7,
+      "score": 0.592288613319397
+    },
+    "268": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.42315950989723206
+    },
+    "269": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4204625189304352
+    },
+    "274": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.8283721804618835
+    },
+    "275": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6283168196678162
+    },
+    "279": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7433344125747681
+    },
+    "294": {
+      "bucket": "deep_miss",
+      "best_rank": 12,
+      "score": 0.5396888852119446
+    },
+    "295": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.6498005390167236
+    },
+    "298": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6879462599754333
+    },
+    "300": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.44410061836242676
+    },
+    "303": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "312": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "314": {
+      "bucket": "deep_miss",
+      "best_rank": 71,
+      "score": 0.3251415491104126
+    },
+    "324": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.32374510169029236
+    },
+    "327": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4811270534992218
+    },
+    "338": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5708537101745605
+    },
+    "343": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6180461049079895
+    },
+    "350": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6157505512237549
+    },
+    "354": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7044363617897034
+    },
+    "362": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5853700041770935
+    },
+    "380": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5973625183105469
+    },
+    "384": {
+      "bucket": "deep_miss",
+      "best_rank": 36,
+      "score": 0.39386308193206787
+    },
+    "385": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6724938750267029
+    },
+    "386": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6913019418716431
+    },
+    "388": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5850592851638794
+    },
+    "399": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.8843222260475159
+    },
+    "410": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7598324418067932
+    },
+    "411": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7559716105461121
+    },
+    "415": {
+      "bucket": "deep_miss",
+      "best_rank": 12,
+      "score": 0.5301262736320496
+    },
+    "421": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "431": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.49495410919189453
+    },
+    "436": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6723532676696777
+    },
+    "437": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "439": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5979850888252258
+    },
+    "440": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6296098828315735
+    },
+    "443": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7135989665985107
+    },
+    "452": {
+      "bucket": "near_miss",
+      "best_rank": 10,
+      "score": 0.4590787887573242
+    },
+    "475": {
+      "bucket": "deep_miss",
+      "best_rank": 18,
+      "score": 0.44910359382629395
+    },
+    "478": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6813132762908936
+    },
+    "491": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6343382596969604
+    },
+    "501": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6570320129394531
+    },
+    "502": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "507": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6579312086105347
+    },
+    "508": {
+      "bucket": "deep_miss",
+      "best_rank": 12,
+      "score": 0.4628976881504059
+    },
+    "513": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6169368028640747
+    },
+    "514": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7311999797821045
+    },
+    "516": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7160775661468506
+    },
+    "517": {
+      "bucket": "deep_miss",
+      "best_rank": 99,
+      "score": 0.34076884388923645
+    },
+    "521": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5776525735855103
+    },
+    "525": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7765496373176575
+    },
+    "527": {
+      "bucket": "deep_miss",
+      "best_rank": 13,
+      "score": 0.4517500400543213
+    },
+    "528": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.682793378829956
+    },
+    "532": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5135418772697449
+    },
+    "533": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5102027654647827
+    },
+    "535": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.5286391377449036
+    },
+    "536": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6115620732307434
+    },
+    "539": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7423237562179565
+    },
+    "540": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.5474470853805542
+    },
+    "544": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.49007222056388855
+    },
+    "549": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5289348363876343
+    },
+    "551": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5665597319602966
+    },
+    "552": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6965200901031494
+    },
+    "554": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.5338772535324097
+    },
+    "560": {
+      "bucket": "deep_miss",
+      "best_rank": 80,
+      "score": 0.4520627558231354
+    },
+    "569": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.5921697020530701
+    },
+    "575": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5457619428634644
+    },
+    "577": {
+      "bucket": "near_miss",
+      "best_rank": 8,
+      "score": 0.45241814851760864
+    },
+    "578": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6661416292190552
+    },
+    "587": {
+      "bucket": "deep_miss",
+      "best_rank": 36,
+      "score": 0.42587554454803467
+    },
+    "589": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.77754145860672
+    },
+    "593": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7230290174484253
+    },
+    "597": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6790930032730103
+    },
+    "598": {
+      "bucket": "near_miss",
+      "best_rank": 7,
+      "score": 0.7201302647590637
+    },
+    "613": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7882892489433289
+    },
+    "619": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.408021479845047
+    },
+    "623": {
+      "bucket": "deep_miss",
+      "best_rank": 16,
+      "score": 0.5507083535194397
+    },
+    "628": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.5282956957817078
+    },
+    "636": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6209093928337097
+    },
+    "637": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.6165973544120789
+    },
+    "641": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7564228177070618
+    },
+    "644": {
+      "bucket": "deep_miss",
+      "best_rank": 28,
+      "score": 0.441105455160141
+    },
+    "649": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.41793733835220337
+    },
+    "659": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.3389752209186554
+    },
+    "660": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "674": {
+      "bucket": "near_miss",
+      "best_rank": 7,
+      "score": 0.46235206723213196
+    },
+    "684": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6601368188858032
+    },
+    "690": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "691": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.4744250178337097
+    },
+    "692": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5901225805282593
+    },
+    "693": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5901203751564026
+    },
+    "700": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6583815813064575
+    },
+    "702": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6128774881362915
+    },
+    "715": {
+      "bucket": "deep_miss",
+      "best_rank": 33,
+      "score": 0.44717714190483093
+    },
+    "716": {
+      "bucket": "deep_miss",
+      "best_rank": 38,
+      "score": 0.4561067223548889
+    },
+    "718": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6369301080703735
+    },
+    "721": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6334230899810791
+    },
+    "723": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7903925776481628
+    },
+    "727": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.48003968596458435
+    },
+    "728": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5186978578567505
+    },
+    "729": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.465803325176239
+    },
+    "742": {
+      "bucket": "near_miss",
+      "best_rank": 9,
+      "score": 0.38247495889663696
+    },
+    "743": {
+      "bucket": "deep_miss",
+      "best_rank": 24,
+      "score": 0.3922589421272278
+    },
+    "744": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.6194750666618347
+    },
+    "756": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6093835234642029
+    },
+    "759": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.8213592171669006
+    },
+    "768": {
+      "bucket": "deep_miss",
+      "best_rank": 48,
+      "score": 0.2695941925048828
+    },
+    "770": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7610683441162109
+    },
+    "775": {
+      "bucket": "deep_miss",
+      "best_rank": 18,
+      "score": 0.42375656962394714
+    },
+    "781": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.7044355273246765
+    },
+    "783": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.47645267844200134
+    },
+    "784": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6721083521842957
+    },
+    "785": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "793": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7145597338676453
+    },
+    "800": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.697545051574707
+    },
+    "805": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.78165602684021
+    },
+    "808": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4681873023509979
+    },
+    "811": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6083919405937195
+    },
+    "814": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6821554899215698
+    },
+    "820": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "821": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "823": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5528939366340637
+    },
+    "830": {
+      "bucket": "deep_miss",
+      "best_rank": 45,
+      "score": 0.4319733679294586
+    },
+    "831": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "832": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6962214112281799
+    },
+    "834": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "837": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.4752725660800934
+    },
+    "839": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5360039472579956
+    },
+    "845": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.6229809522628784
+    },
+    "847": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6189753413200378
+    },
+    "852": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5297671556472778
+    },
+    "859": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.5120423436164856
+    },
+    "870": {
+      "bucket": "deep_miss",
+      "best_rank": 22,
+      "score": 0.42386123538017273
+    },
+    "873": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.47153788805007935
+    },
+    "879": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6687935590744019
+    },
+    "880": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6057981848716736
+    },
+    "882": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6688203811645508
+    },
+    "887": {
+      "bucket": "deep_miss",
+      "best_rank": 30,
+      "score": 0.3882156312465668
+    },
+    "903": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6556630730628967
+    },
+    "904": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.684573233127594
+    },
+    "907": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7832415699958801
+    },
+    "911": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6466108560562134
+    },
+    "913": {
+      "bucket": "near_miss",
+      "best_rank": 8,
+      "score": 0.4302167296409607
+    },
+    "914": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.42179062962532043
+    },
+    "921": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5871235132217407
+    },
+    "922": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7298262119293213
+    },
+    "936": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.3339015543460846
+    },
+    "956": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6170327067375183
+    },
+    "957": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.44356080889701843
+    },
+    "960": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.73729407787323
+    },
+    "967": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4570392072200775
+    },
+    "971": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.8015927076339722
+    },
+    "975": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "982": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6291086673736572
+    },
+    "985": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7056680917739868
+    },
+    "993": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6594583988189697
+    },
+    "1012": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.8502700328826904
+    },
+    "1014": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6422812938690186
+    },
+    "1019": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.34941065311431885
+    },
+    "1020": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6801443099975586
+    },
+    "1021": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6805084943771362
+    },
+    "1024": {
+      "bucket": "deep_miss",
+      "best_rank": 41,
+      "score": 0.4340783357620239
+    },
+    "1029": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7995705008506775
+    },
+    "1041": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.6789041757583618
+    },
+    "1049": {
+      "bucket": "deep_miss",
+      "best_rank": 21,
+      "score": 0.40899452567100525
+    },
+    "1062": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5759534239768982
+    },
+    "1086": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.829929530620575
+    },
+    "1088": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6310781240463257
+    },
+    "1089": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7674806118011475
+    },
+    "1099": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.6492135524749756
+    },
+    "1100": {
+      "bucket": "near_miss",
+      "best_rank": 4,
+      "score": 0.6362224221229553
+    },
+    "1104": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.734280526638031
+    },
+    "1107": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5003232955932617
+    },
+    "1110": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1121": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.580553412437439
+    },
+    "1130": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6944625377655029
+    },
+    "1132": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.6252771019935608
+    },
+    "1137": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5601862668991089
+    },
+    "1140": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5778157711029053
+    },
+    "1144": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6647847294807434
+    },
+    "1146": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4927491843700409
+    },
+    "1150": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6107103824615479
+    },
+    "1163": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6139078736305237
+    },
+    "1175": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1179": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1180": {
+      "bucket": "deep_miss",
+      "best_rank": 23,
+      "score": 0.4044668674468994
+    },
+    "1185": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5917587280273438
+    },
+    "1187": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5908852815628052
+    },
+    "1191": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.4111226499080658
+    },
+    "1194": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5041624307632446
+    },
+    "1196": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.5483748912811279
+    },
+    "1197": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.4616856873035431
+    },
+    "1199": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1200": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1202": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5904685258865356
+    },
+    "1204": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5696547031402588
+    },
+    "1207": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5854865312576294
+    },
+    "1213": {
+      "bucket": "deep_miss",
+      "best_rank": 78,
+      "score": 0.44387784600257874
+    },
+    "1216": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6355022192001343
+    },
+    "1221": {
+      "bucket": "near_miss",
+      "best_rank": 8,
+      "score": 0.42155763506889343
+    },
+    "1225": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4901677072048187
+    },
+    "1226": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1232": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6107253432273865
+    },
+    "1241": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6623752117156982
+    },
+    "1245": {
+      "bucket": "near_miss",
+      "best_rank": 9,
+      "score": 0.33152884244918823
+    },
+    "1259": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.6628646850585938
+    },
+    "1262": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7587667107582092
+    },
+    "1266": {
+      "bucket": "near_miss",
+      "best_rank": 5,
+      "score": 0.6278992891311646
+    },
+    "1270": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5068231225013733
+    },
+    "1271": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7964617609977722
+    },
+    "1272": {
+      "bucket": "deep_miss",
+      "best_rank": 28,
+      "score": 0.31469810009002686
+    },
+    "1273": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.776142418384552
+    },
+    "1274": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6571793556213379
+    },
+    "1278": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5599502325057983
+    },
+    "1279": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5945731997489929
+    },
+    "1280": {
+      "bucket": "deep_miss",
+      "best_rank": 14,
+      "score": 0.40171557664871216
+    },
+    "1281": {
+      "bucket": "near_miss",
+      "best_rank": 8,
+      "score": 0.38412272930145264
+    },
+    "1282": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.45883211493492126
+    },
+    "1290": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7644346952438354
+    },
+    "1292": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.4888155460357666
+    },
+    "1298": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7530048489570618
+    },
+    "1303": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.3802863657474518
+    },
+    "1316": {
+      "bucket": "deep_miss",
+      "best_rank": 44,
+      "score": 0.4137752056121826
+    },
+    "1319": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.5674197673797607
+    },
+    "1320": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6210898756980896
+    },
+    "1332": {
+      "bucket": "miss_100",
+      "best_rank": null,
+      "score": null
+    },
+    "1335": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6542898416519165
+    },
+    "1336": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6586458086967468
+    },
+    "1337": {
+      "bucket": "near_miss",
+      "best_rank": 10,
+      "score": 0.47709041833877563
+    },
+    "1339": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.49790123105049133
+    },
+    "1344": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.8175413012504578
+    },
+    "1352": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6671011447906494
+    },
+    "1359": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7373191118240356
+    },
+    "1362": {
+      "bucket": "deep_miss",
+      "best_rank": 85,
+      "score": 0.23201267421245575
+    },
+    "1363": {
+      "bucket": "deep_miss",
+      "best_rank": 63,
+      "score": 0.2578038275241852
+    },
+    "1368": {
+      "bucket": "deep_miss",
+      "best_rank": 11,
+      "score": 0.4937485456466675
+    },
+    "1370": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.5569354891777039
+    },
+    "1379": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.7236480116844177
+    },
+    "1382": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6231961846351624
+    },
+    "1385": {
+      "bucket": "near_miss",
+      "best_rank": 2,
+      "score": 0.5094884037971497
+    },
+    "1389": {
+      "bucket": "perfect",
+      "best_rank": 1,
+      "score": 0.6427110433578491
+    },
+    "1395": {
+      "bucket": "near_miss",
+      "best_rank": 3,
+      "score": 0.48809465765953064
+    }
+  }
+}

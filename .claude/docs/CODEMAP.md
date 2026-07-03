@@ -1,179 +1,160 @@
 # CODEMAP — RAG-Eval SciFact
-> Cartographie décisionnelle. État : fin d'étape 2 (pré-implémentation).
-> Source : `rag-eval-scifact-etape2-decisions.md`.
-> Générée le 2026-07-01.
->
-> NOTE : Ce projet est en phase **pré-code** (étape 2 close, étape 3 à démarrer).
-> La carte pointe vers les **décisions gelées** qui structureront l'implémentation.
-> Le code source n'existe pas encore.
+
+> Carte de retrieval. Générée par codemap-builder le 2026-07-01.
+> Pointeurs vers le code réel. Ne pas recopier le code. Régénérable — ne pas éditer à la main.
 
 ---
 
 ## Architecture générale
 
-**Pipeline de bout en bout** :
-- **Ingestion** : corpus SciFact (5183 docs) → embedding → indexation ChromaDB
-- **Retrieval** : requête → embedding → similarité cosinus → top-100 classés
-- **Évaluation** : Recall@k + nDCG + MRR vs qrels (harness fait-main)
-- **Artefacts** : `RESULTS.md` (append-only) + `results/*.json` (par run)
-
-Voir `rag-eval-scifact-etape2-decisions.md` (§1–5).
+**Pipeline mono-passage, trois étapes :**
+1. **Ingestion** (`rag_eval_scifact/ingest.py:54`) : corpus SciFact (5183 docs) → embeddings MiniLM (256 tokens) → ChromaDB (espace cosinus)
+2. **Retrieval** (`rag_eval_scifact/retrieve.py:80`) : requêtes test (300) → embeddings → top-100 brute-force numpy (exact, pas HNSW approximé)
+3. **Évaluation** (`rag_eval_scifact/run_eval.py:22`) : 6 métriques fait-main (Recall@{1,5,10,100} + nDCG@10 + MRR) → JSON + RESULTS.md
 
 ---
 
-## Dataset / Corpus
+## Ingestion & Stockage
 
-**Source & faits mesurés** : `rag-eval-scifact-etape2-decisions.md` (§1)
+### Charger et embedder le corpus
+- `ingest.py:54–138` — Fonction `ingest()` — Pipeline complet : charge `corpus.jsonl` (5183 docs), concatène `title + " " + text` par doc, calcule token_count (MiniLM exact, avec spéciaux), embedde avec `all-MiniLM-L6-v2` (max_seq_length=256, batch_size=64), calcule `dataset_hash` (SHA-256 des fichiers sources)
+  - Constantes config : `CORPUS_PATH`, `CHROMA_DIR`, `COLLECTION_NAME`, `MODEL_NAME`, `MAX_SEQ_LENGTH=256`, `EXPECTED_COUNT=5183` → `ingest.py:24–29`
+  - Fonction support `load_corpus(corpus_path)` → `ingest.py:41–51` — Charge depuis JSONL brut (pas via `datasets` HF)
+  - Fonction support `compute_dataset_hash(corpus_path)` → `ingest.py:32–38` — SHA-256 déterministe des fichiers sources, stocké en metadata collection
 
-- **Taille corpus** : 5183 documents (BEIR SciFact complet)
-  - Longueur médiane : 316 tokens (MiniLM tokenizer)
-  - Longueur p90 : 502 tokens, p95 : 567, max : 1939
-  - **71 % des docs > 256 tokens** (seuil MiniLM par défaut)
+### ChromaDB indexation
+- Collection fraîche création avec `hnsw:space="cosine"` → `ingest.py:88–104` — **CRITIQUE** : `delete_collection` avant création si existe (hnsw:space n'est pas modifiable après création). Assertion de vérification de l'espace → `ingest.py:107–109`
+- Batch indexing par 1000 docs → `ingest.py:111–124`
+- Metadata par doc : `title`, `token_count` (pour error analysis troncature) → `ingest.py:119–122`
 
-- **Qrels (docs pertinents par requête)** :
-  - Split `test` : 300 requêtes, 92,3 % avec 1 seul doc pertinent
-  - Split `train` : 809 requêtes, 90,5 % avec 1 seul doc pertinent
-  - Tâche : retrieval du 1 unique doc pour ~9 requêtes sur 10
-
-**Décision d'unité** : Le document entier (`title + text`), pas de chunking sous-document (`rag-eval-scifact-etape2-decisions.md:31–36`).
-- Rationale : Qrels définis au niveau document ; chunking cassant l'alignement + la comparabilité leaderboard.
-- Troncature 256 tokens = **dette explicite v1** (baseline BEIR), notée comme levier à débloquer post-v1.
-
----
-
-## Embedding & Indexation
-
-**Modèle & config v1** : `rag-eval-scifact-etape2-decisions.md` (§2, §6)
-
-- **Modèle** : `all-MiniLM-L6-v2`
-  - Dimension : 384
-  - Fenêtre max : 256 tokens (tronqué, pas échappé, **dette acceptée**)
-  - Entraîné pour **similarité cosinus** (critique)
-
-- **Base de données vectorielle** : ChromaDB
-  - **Espace de similarité : cosinus (✋ VERIFY avant tout run)** — pas L2 par défaut
-  - Indexation : tous les 5183 docs (pas filtré par qrels) — ✋ VERIFY
-
-**Rationale de v1** : Standard BEIR pour sentence-transformers ; baseline comparable, pas cassée d'emblée. Levier troncature (512 / autre modèle / chunking) gated sur error analysis v1 de retrieval (pas supposé).
+### Invariants vérifiés
+- Corpus complet 5183 docs → `ingest.py:128`
+- Espace cosinus (pas L2 par défaut) → `ingest.py:107`
+- Token count avec `add_special_tokens=True` (identique inspection étape 2) → `ingest.py:68–72`
 
 ---
 
-## Retrieval
+## Retrieval Dense
 
-**Similitude & ranking** : `rag-eval-scifact-etape2-decisions.md` (§5, §6)
+### Charger requêtes & qrels
+- `retrieve.py:45–77` — Fonction `load_test_queries(queries_path, qrels_path)` — Charge requêtes depuis `queries.jsonl` (filtrées par test split via qrels), charge qrels depuis `test.tsv` (tab-delimited, colonnes `query-id`, `corpus-id`). Retourne lista queries + dict qrels indexé par query_id
 
-- **Similarité** : cosinus entre vecteur requête et corpus indexé
-  - Top-100 ramenés = profondeur de log (+ récupération scores de similarité)
-  - Uniquement top-100 : au-delà, rien n'est mesuré → rien n'est stocké
+### Retrieval brute-force exact
+- `retrieve.py:80–152` — Fonction `retrieve()` — Pipeline complet :
+  - Charge requêtes test (300) et qrels → `retrieve.py:89–91`
+  - Récupère tous les embeddings docs depuis ChromaDB → `retrieve.py:94–104`
+  - Embedde requêtes (MiniLM, max_seq_length=256) → `retrieve.py:107–113`
+  - **Calcul cosinus exact** : L2-normalise requêtes + docs → dot product → top-100 par requête (numpy, pas HNSW) → `retrieve.py:115–135`
+  - Retourne `results` (list[RetrievalResult]), `qrels`, `dataset_hash` → `retrieve.py:145–152`
 
-- **Protocole** : zero-shot retrieval sur split `test` (300 requêtes, ~300 qrels) + sanity check optionnel sur `train` (809 requêtes).
-  - Corpus indexé : 5183 docs (TOUJOURS, même pour `test`) — protocole BEIR, distracteurs = tâche
-
----
-
-## Métriques & Évaluation
-
-**Harness d'éval (fait-main)** : `rag-eval-scifact-etape2-decisions.md` (§3)
-
-**Jeu de sonde (k-de-mesure, pluriel)** :
-- `Recall@1` : juste du premier coup ? (sensé pour 92 % des requêtes à 1 doc)
-- `Recall@5` : dans le budget RAG réel ?
-- `Recall@10` : filet + comparable (standard)
-- `Recall@100` : juge de la dette de troncature (docs >256 vs ≤256)
-
-**Métriques agrégées (pour leaderboard / reporting)** :
-- `nDCG@10` : bien classé ? (0–1) — **métrique BEIR leaderboard** (audience externe)
-- `MRR` : rang moyen — **lisible pour error analysis** (audience interne)
-
-**Calcul** : À implémenter soi-même (pas de lib clé-en-main type `pytrec_eval`) — ✋ VERIFY avant commit. Voir `rag-eval-scifact-etape2-decisions.md:82`.
+### Data model
+- `RetrievalResult` (dataclass) → `retrieve.py:34–42` — Contrat figé avec harness d'éval :
+  - `query_id` : str
+  - `query_text` : str
+  - `retrieved` : list[dict] — Top-100 trié score décroissant, chaque dict = `{"doc_id": str, "rank": int, "score": float}`
 
 ---
 
-## Artefacts & Versioning
+## Évaluation fait-main
 
-**Format de résultats** : `rag-eval-scifact-etape2-decisions.md` (§4)
+### Métriques (implémentation manuelle)
+- `metrics.py:13–22` — `recall_at_k(retrieved_ids, relevant_ids, k)` — |{pertinents ∩ top-k}| / |{pertinents}|
+- `metrics.py:25–51` — `ndcg_at_k(retrieved_ids, relevant_ids, k)` — DCG@k / IDCG@k (relevance binaire, log₂(i+1) pour rang i)
+- `metrics.py:54–66` — `mrr(retrieved_ids, relevant_ids)` — 1/rang du premier doc pertinent (0.0 si absent)
 
-**Niveau run** (une fois, carte d'identité) :
-- `version` : tag git (ex. `v1-dense`)
-- `date` : horodatage run
-- `dataset_hash` : garantit que deux runs portent sur les mêmes données
-- **Config embedding** :
-  - `model` : `all-MiniLM-L6-v2`
-  - `max_seq_length` : 256 (cible v1) → 512 (levier post-v1)
-  - `dim` : 384
-- Métriques agrégées (Recall@k, nDCG@10, MRR)
+**Invariant méthodologique** → `.claude/rules/methodologie.md` : **Aucune lib d'éval autorisée** (pytrec_eval, beir.retrieval.evaluation, etc.). Les 6 métriques sont implémentées soi-même.
 
-**Niveau requête** (un objet par requête, cœur error analysis) :
-- `query_id` + texte de la requête
-- **Docs attendus** : `_id` des qrels **avec leur longueur en tokens** ← corrèle échec ↔ troncature
-- **Top-100 ramenés** : `_id` + rang + score de similarité
-- Métriques de cette requête (found@k, rang du bon doc)
+### Tests métriques
+- `tests/test_metrics.py:21–155` — Suite complète pytest :
+  - Fixtures cas-tests : trivial (rang 1), rang 2, rang 3, absent (hors top-100), multi (2 docs)
+  - Tests Recall@k → `test_metrics.py:67–88`
+  - Tests nDCG@10 avec oracles calculés à la main → `test_metrics.py:95–119`
+  - Tests MRR → `test_metrics.py:126–142`
+  - Edge case : IDCG=0 (pas de division par zéro) → `test_metrics.py:150–154`
 
-**Versioning** :
-- `RESULTS.md` : append-only (log historique des runs, une ligne = un run)
-- `results/*.json` : un fichier JSON par run (détail complet pour replay/debug)
-- Tous les deux commités avec le même tag git (ex. `v1-dense`)
-- **✋ Run non commité = run inexistant** (critère de vérification §6)
+### Orchestration run complet
+- `run_eval.py:22–77` — Fonction `run_eval()` — Point d'entrée unique (commande : `python -m rag_eval_scifact.run_eval`) :
+  - Appelle `retrieve()` → récupère résultats, qrels, dataset_hash
+  - Boucle sur 300 requêtes, agrège 6 métriques (macro-average) → `run_eval.py:29–52`
+  - Génère artefacts JSON + append RESULTS.md → `run_eval.py:55–58`
+  - Affiche résumé console → `run_eval.py:60–73`
 
----
+### Artefacts (JSON + RESULTS.md)
+- `run_output.py:28–49` — `compute_per_query_metrics(retrieved_ids, relevant_ids)` — Calcule `found@{1,5,10,100}` et `best_rank` par requête
+- `run_output.py:52–60` — `get_token_counts(doc_ids)` — Récupère token_count depuis metadata ChromaDB (pour correler échecs et troncature)
+- `run_output.py:63–109` — `generate_run_json(results, qrels, metrics, dataset_hash, run_date)` — Assemble JSON complet :
+  - Niveau run : version, date ISO, dataset_hash, config (model, max_seq_length, dim), métriques agrégées
+  - Niveau requête (300 objets) : query_id, query_text, expected_docs (avec token_count), retrieved_top100, per_query_metrics
+- `run_output.py:112–120` — `write_run_json(run_data)` — Écrit `results/v1-dense-{date ISO}.json`
+- `run_output.py:123–150` — `append_results_md(metrics)` — Ajoute ligne RESULTS.md (append-only strict), format : version | date | R@1 | R@5 | R@10 | R@100 | nDCG@10 | MRR | dette (max_seq=256) | note d'analyse
 
-## Décisions gelées (fin étape 2)
-
-Voir `rag-eval-scifact-etape2-decisions.md` pour détail complet.
-
-**Nœuds tranchés (passent à l'implémentation)** :
-- A. Split d'éval : `test` (300 requêtes), corpus complet 5183 docs
-- B. Corpus : 5183 docs entiers, pas de chunking v1
-- C. Similarité : **cosinus explicite** (✋ Vérifier ChromaDB + normalisation vecteurs)
-- D. Troncature 256 : **dette acceptée** (MiniLM baseline, comparable BEIR)
-- E. Harness : 6 métriques custom (Recall@{1,5,10,100} + nDCG@10 + MRR)
-- F. Artefacts : `RESULTS.md` + `results/*.json`, tagués+commités
-
-**Leviers pré-enregistrés (hors v1, activés si error analysis les désigne)** :
-- BM25 (reranking léger)
-- Fusion RRF (multi-retriever)
-- Reranking dense
-- LLM de génération (mode RAG full)
-- Sortie de dette troncature (512 / autre modèle long-context / chunking for embedding)
-- Frontend / Inspector (visualisation)
-
-Backlog troncature (ordre croissant coût) :
-1. `max_seq_length` 256 → 512 (une ligne ; 71 % → 8,8 % troncature)
-2. Autre modèle embedding (long-context, ex. Jina embeddings)
-3. Chunk-for-embedding + remap chunk→doc (plus lourd)
+### Versioning des runs
+- Invariant → `.claude/rules/versioning.md` : **Run non commité = run inexistant**. Chaque run doit produire + commiter :
+  1. Une ligne dans `RESULTS.md` (append-only, jamais réécrire)
+  2. Un fichier `results/{tag}-{date}.json` avec détail complet
+  3. Les deux sous le même tag git (ex. `v1-dense`)
+- Ligne historique → `RESULTS.md:3` — Premier run v1-dense exécuté 2026-07-01 : R@1=0.4823, R@5=0.7379, R@10=0.7833, R@100=0.925, nDCG@10=0.6451, MRR=0.6110
 
 ---
 
-## Critères ✋ VERIFY pour l'implémentation
+## Dataset & Données
 
-Avant tout commit/run :
-- ✋ **Espace de similarité = cosinus**, pas L2 (ChromaDB `hnsw:space = cosine` ou normalisation vecteurs MiniLM)
-- ✋ **Corpus indexé = 5183 docs**, pas sous-ensemble filtré par qrels
-- ✋ **Troncature 256 notée comme dette** dans `RESULTS.md` (pas silencieuse)
-- ✋ **Métriques calculées à la main**, pas déléguées à lib clé-en-main
-- ✋ **Run non commité = run inexistant** : `RESULTS.md` + `results/*.json` produits et tagués ensemble
+### Sources brutes BEIR SciFact
+- Corpus : `data/scifact/corpus.jsonl` — 5183 documents (title + text)
+- Requêtes : `data/scifact/queries.jsonl` — ID + text pour 1109 requêtes (dont 300 test)
+- Qrels test : `data/scifact/qrels/test.tsv` — 300 requêtes × 1.13 docs pertinents en moyenne (92.3 % à 1 seul doc)
 
-Voir `rag-eval-scifact-etape2-decisions.md:100–106`.
+**Invariant dataset** → `.claude/rules/invariants.md` :
+- Corpus indexé = 5183 docs entiers toujours (jamais filtré par qrels)
+- Split d'éval = test (300 requêtes, 92.3 % à 1 doc pertinent)
+- Troncature MiniLM = 256 tokens, 71 % des docs dépassent ce seuil → dette acceptée pour v1, notée explicite dans RESULTS.md
 
----
-
-## Entrées de l'étape 3
-
-- `rag-eval-scifact-etape2-decisions.md` (ce document : faits + décisions figées)
-- Cadrage invariants (non sur disque, mémoriser ou récupérer oral)
-- Chat neuf pour l'implémentation (pas d'historique étape 2)
-
-**Nœuds d'implémentation restants** (hors dataset) :
-- Un seul `IMPLEMENTATION.md` ou séparé (éval / embed) ? (décision de séquençage)
-- Contenu exact du `.claude/` encodant les 5 critères ✋ (structure rules)
+### Résultats
+- JSON courant → `results/v1-dense-2026-07-01T17-19-59.json` — Run complet horodaté, 300 requêtes, top-100 par requête avec scores cosinus
+- Historique → `RESULTS.md` — Append-only, une ligne par run tagué
 
 ---
 
-## Absence de code source
+## Configuration & Invariants
 
-Ce projet est actuellement **sans implémentation** (étape 2 close, code lancé à l'étape 3).
-- Pas de `src/`, `lib/`, `tests/`
-- Pas de `requirements.txt`, `setup.py`, `pyproject.toml`
-- Pas de `main.py` ou point d'entrée
+### Stack & Dépendances
+- `pyproject.toml:5–21` — Dependencies : `sentence-transformers` (MiniLM), `chromadb` (storage cosinus), `numpy` (calcul cosinus brute-force). Dev : `pytest`
+- Python ≥ 3.11
 
-Tous les fichiers `.py` seront créés à l'étape 3.
+### Constantes critiques
+- **Embedding** → `ingest.py:27–28`, `retrieve.py:28–29` :
+  - Modèle : `sentence-transformers/all-MiniLM-L6-v2` (384d)
+  - max_seq_length : 256 tokens (→ 71 % troncature, dette v1)
+- **Corpus** → `ingest.py:24–26`, `retrieve.py:24–26` :
+  - Chemins : `data/scifact/corpus.jsonl`, `data/scifact/queries.jsonl`, `data/scifact/qrels/test.tsv`
+  - ChromaDB dir : `chroma_data/`
+  - Collection name : `scifact_v1`
+- **Retrieval** → `retrieve.py:30` :
+  - TOP_K : 100 (profondeur de log)
+- **Métriques** → `run_eval.py:32–39` :
+  - 6 métriques clés : recall@{1,5,10,100}, nDCG@10, MRR
+
+### Checklist pré-run (gates)
+→ `.claude/rules/invariants.md` :
+1. **Espace cosinus vérifié** : `collection.metadata["hnsw:space"] == "cosine"` (pas L2 par défaut) → `ingest.py:107–109`
+2. **Corpus complet 5183** : vérification count → `ingest.py:128`
+3. **Troncature notée dette** : `max_seq=256` enregistré dans RESULTS.md → `run_output.py:144`
+
+---
+
+## Points d'entrée
+
+- **Ingestion** : `python -m rag_eval_scifact.ingest` ou `ingest.py:137–138`
+- **Retrieval test** : `python -m rag_eval_scifact.retrieve` ou `retrieve.py:155–168` (affiche résumé rapide)
+- **Run complet** : `python -m rag_eval_scifact.run_eval` (point d'entrée officiel, à commiter après)
+
+---
+
+## Invariants détectés
+
+- **Pas de tests intégration** : `tests/test_metrics.py` couvre métriques unitaires seulement. Pas de test end-to-end (run complet + JSON output).
+- **Pas de CLI structurée** : entrées par modification de constantes dans les fichiers (chemins, model, max_seq_length). Convention non-standard pour project de cette taille.
+- **Pas de logging** : affichage console via `print()` uniquement. Pas d'audit trail persistant des exécutions.
+- **Dense-seul v1** : volontairement minimale (embedding + cosinus). Aucun BM25/RRF/reranking/LLM de génération. Leviers hors scope v1, gated sur error analysis.
+- **Éval fait-main strict** : Aucune dépendance à des libs d'éval (pytrec_eval, beir.retrieval.evaluation) — interdiction méthodologique explicite.
+- **Ollama-only** : LLM local seulement (post-v1, si nécessaire). Zéro API payante.

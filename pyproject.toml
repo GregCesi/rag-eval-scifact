@@ -19,3 +19,7 @@ include = ["rag_eval_scifact*"]
 dev = [
     "pytest",
 ]
+dashboard = [
+    "streamlit",
+    "plotly",
+]
