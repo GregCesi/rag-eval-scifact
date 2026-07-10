@@ -1,0 +1,55 @@
+## Query 212
+**Question** : CR is associated with higher methylation age.
+**Meilleur rang** : 6
+
+### Document(s) attendu(s)
+
+**Caloric restriction delays age-related methylation drift** (`22038539`, 289 tokens, TRONQUE)
+
+in mammals, caloric restriction consistently results in extended lifespan. epigenetic information encoded by dna methylation is tightly regulated, but shows a striking drift associated with age that includes both gains and losses of dna methylation at various sites. here, we report that epigenetic drift is conserved across species and the rate of drift correlates with lifespan when comparing mice, rhesus monkeys, and humans. twenty - two to 30 - year - old rhesus monkeys exposed to 30 % caloric restriction since 7 - 14 years of age showed attenuation of age - related methylation drift compared to ad libitum - fed controls such that their blood methylation age appeared 7 years younger than their chronologic age. even more pronounced effects were seen in 2. 7 - 3. 2 - year - old mice exposed to 40 % caloric restriction starting at 0. 3 years of age. the effects of caloric restriction on dna methylation were detectable across different tissues and correlated with gene expression. we propose that epigenetic drift is a determinant of lifespan in mammals. caloric restriction has been shown to increase lifespan in mammals. here, the authors provide evidence that age - related methylation drift correlates with lifespan and that caloric
+
+--- ✂ coupe 256 tokens ---
+
+restriction in mice and rhesus monkeys results in attenuation of age - related methylation drift.
+
+### Top-5 retrouve
+
+**Rang 1** (score 0.6218, TRONQUE) — ** DNA methylation and healthy human aging** (`9291668`)
+
+the process of aging results in a host of changes at the cellular and molecular levels, which include senescence, telomere shortening, and changes in gene expression. epigenetic patterns also change over the lifespan, suggesting that epigenetic changes may constitute an important component of the aging process. the epigenetic mark that has been most highly studied is dna methylation, the presence of methyl groups at cpg dinucleotides. these dinucleotides are often located near gene promoters and associate with gene expression levels. early studies indicated that global levels of dna methylation increase over the first few years of life and then decrease beginning in late adulthood. recently, with the advent of microarray and next - generation sequencing technologies, increases in variability of dna methylation with age have been observed, and a number of site - specific patterns have been identified. it has also been shown that certain cpg sites are highly associated with age, to the extent that prediction models using a small number of these sites can accurately predict the chronological age of the donor. together, these observations point to the existence of two phenomena that both contribute to age - related dna methylation changes : epigenetic drift and the epigenetic clock. in this review, we focus on
+
+--- ✂ coupe 256 tokens ---
+
+healthy human aging throughout the lifetime and discuss the dynamics of dna methylation as well as how interactions between the genome, environment, and the epigenome influence aging rates. we also discuss the impact of determining ' epigenetic age ' for human health and outline some important caveats to existing and future studies.
+
+**Rang 2** (score 0.5594, TRONQUE) — **Widespread and tissue specific age-related DNA methylation changes in mice.** (`11935250`)
+
+aberrant methylation of promoter cpg islands in cancer is associated with silencing of tumor - suppressor genes, and age - dependent hypermethylation in normal appearing mucosa may be a risk factor for human colon cancer. it is not known whether this age - related dna methylation phenomenon is specific to human tissues. we performed comprehensive dna methylation profiling of promoter regions in aging mouse intestine using methylated cpg island amplification in combination with microarray analysis. by comparing c57bl / 6 mice at 3 - mo - old versus 35 - mo - old for 3627 detectable autosomal genes, we found 774 ( 21 % ) that showed increased methylation and 466 ( 13 % ) that showed decreased methylation. we used pyrosequencing to quantitatively validate the microarray data and confirmed linear age - related methylation changes for all 12 genomic regions examined. we then examined 11 changed genomic loci for age - related methylation in other tissues. of these, three of 11 showed similar changes in lung, seven of 11 changed in liver, and six of 11 changed in spleen, though to a lower degree than the changes seen in colon. there was partial conservation
+
+--- ✂ coupe 256 tokens ---
+
+between age - related hypermethylation in human and mouse intestines, and polycomb targets in embryonic stem cells were enriched among the hypermethylated genes. our findings demonstrate a surprisingly high rate of hyper - and hypomethylation as a function of age in normal mouse small intestine tissues and a strong tissue - specificity to the process. we conclude that epigenetic deregulation is a common feature of aging in mammals.
+
+**Rang 3** (score 0.5526, TRONQUE) — **Diverse interventions that extend mouse lifespan suppress shared age-associated epigenetic changes at critical gene regulatory regions** (`4434951`)
+
+background age - associated epigenetic changes are implicated in aging. notably, age - associated dna methylation changes comprise a so - called aging " clock ", a robust biomarker of aging. however, while genetic, dietary and drug interventions can extend lifespan, their impact on the epigenome is uncharacterised. to fill this knowledge gap, we defined age - associated dna methylation changes at the whole - genome, single - nucleotide level in mouse liver and tested the impact of longevity - promoting interventions, specifically the ames dwarf prop1 df / df mutation, calorie restriction and rapamycin. results in wild - type mice fed an unsupplemented ad libitum diet, age - associated hypomethylation was enriched at super - enhancers in highly expressed genes critical for liver function. genes harbouring hypomethylated enhancers were enriched for genes that change expression with age. hypermethylation was enriched at cpg islands marked with bivalent activating and repressing histone modifications and resembled hypermethylation in liver cancer. age - associated methylation changes are suppressed in ames dwarf and calorie restricted mice and more selectively and less specifically in rapamycin treated mice.
+
+--- ✂ coupe 256 tokens ---
+
+conclusions age - associated hypo - and hypermethylation events occur at distinct regulatory features of the genome. distinct longevity - promoting interventions, specifically genetic, dietary and drug interventions, suppress some age - associated methylation changes, consistent with the idea that these interventions exert their beneficial effects, in part, by modulation of the epigenome. this study is a foundation to understand the epigenetic contribution to healthy aging and longevity and the molecular basis of the dna methylation clock.
+
+**Rang 4** (score 0.5509, TRONQUE) — **DNA methylation age of human tissues and cell types** (`7808055`)
+
+background it is not yet known whether dna methylation levels can be used to accurately predict age across a broad spectrum of human tissues and cell types, nor whether the resulting age prediction is a biologically meaningful measure. results i developed a multi - tissue predictor of age that allows one to estimate the dna methylation age of most tissues and cell types. the predictor, which is freely available, was developed using 8, 000 samples from 82 illumina dna methylation array datasets, encompassing 51 healthy tissues and cell types. i found that dna methylation age has the following properties : first, it is close to zero for embryonic and induced pluripotent stem cells ; second, it correlates with cell passage number ; third, it gives rise to a highly heritable measure of age acceleration ; and, fourth, it is applicable to chimpanzee tissues. analysis of 6, 000 cancer samples from 32 datasets showed that all of the considered 20 cancer types exhibit significant age acceleration, with an average of 36 years. low age - acceleration of cancer tissue is associated with a high number of somatic mutations and tp53 mutations, while mutations in steroid receptors greatly accelerate dna methylation age in breast cancer. finally, i characterize
+
+--- ✂ coupe 256 tokens ---
+
+the 353 cpg sites that together form an aging clock in terms of chromatin states and tissue variance. conclusions i propose that dna methylation age measures the cumulative effect of an epigenetic maintenance system. this novel epigenetic clock can be used to address a host of questions in developmental biology, cancer and aging research.
+
+**Rang 5** (score 0.5370, TRONQUE) — **Age-Associated Sperm DNA Methylation Alterations: Possible Implications in Offspring Disease Susceptibility** (`14475235`)
+
+recent evidence demonstrates a role for paternal aging on offspring disease susceptibility. it is well established that various neuropsychiatric disorders ( schizophrenia, autism, etc. ), trinucleotide expansion associated diseases ( myotonic dystrophy, huntington ' s, etc. ) and even some forms of cancer have increased incidence in the offspring of older fathers. despite strong epidemiological evidence that these alterations are more common in offspring sired by older fathers, in most cases the mechanisms that drive these processes are unclear. however, it is commonly believed that epigenetics, and specifically dna methylation alterations, likely play a role. in this study we have investigated the impact of aging on dna methylation in mature human sperm. using a methylation array approach we evaluated changes to sperm dna methylation patterns in 17 fertile donors by comparing the sperm methylome of 2 samples collected from each individual 9 - 19 years apart. with this design we have identified 139 regions that are significantly and consistently hypomethylated with age and 8 regions that are significantly hypermethylated with age. a representative subset of these alterations have been confirmed in an independent cohort. a total of 117 genes are associated with these regions of methylation alterations ( promoter or gene body
+
+--- ✂ coupe 256 tokens ---
+
+). intriguingly, a portion of the age - related changes in sperm dna methylation are located at genes previously associated with schizophrenia and bipolar disorder. while our data does not establish a causative relationship, it does raise the possibility that the age - associated methylation of the candidate genes that we observe in sperm might contribute to the increased incidence of neuropsychiatric and other disorders in the offspring of older males. however, further study is required to determine whether, and to what extent, a causative relationship exists.
