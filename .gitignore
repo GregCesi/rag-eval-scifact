@@ -21,5 +21,8 @@ data/scifact/
 .vscode/
 *.swp
 
+# MCP config (local)
+.mcp.json
+
 # OS
 .DS_Store
