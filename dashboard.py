@@ -445,8 +445,16 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
 
     # --- Selecteur de bucket ---
     bucket_options = [f"{bucket_labels[b]} ({counts[b]})" for b in bucket_names]
+
+    def _on_bucket_change():
+        st.session_state.error_query_idx = 0
+        st.session_state._error_query_select = 0
+        st.session_state.pop("show_export", None)
+
     selected_idx = st.selectbox("Bucket", range(len(bucket_names)),
-                                format_func=lambda i: bucket_options[i])
+                                format_func=lambda i: bucket_options[i],
+                                key="_error_bucket_select",
+                                on_change=_on_bucket_change)
     selected_bucket = bucket_names[selected_idx]
     query_ids = queries_by_bucket[selected_bucket]
 
@@ -457,28 +465,37 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
     # --- Navigation query par query ---
     col_prev, col_select, col_next = st.columns([1, 6, 1])
 
-    # Initialiser l'index de navigation
+    # Initialiser et clamper l'index
     if "error_query_idx" not in st.session_state:
         st.session_state.error_query_idx = 0
-    if st.session_state.error_query_idx >= len(query_ids):
-        st.session_state.error_query_idx = 0
-
+    st.session_state.error_query_idx = min(
+        st.session_state.error_query_idx, len(query_ids) - 1
+    )
     current_idx = st.session_state.error_query_idx
 
-    with col_prev:
-        if st.button("< Prec", use_container_width=True) and current_idx > 0:
-            st.session_state.error_query_idx = current_idx - 1
-            st.session_state._error_query_select = current_idx - 1
-            st.rerun()
-    with col_next:
-        if st.button("Suiv >", use_container_width=True) and current_idx < len(query_ids) - 1:
-            st.session_state.error_query_idx = current_idx + 1
-            st.session_state._error_query_select = current_idx + 1
-            st.rerun()
-    with col_select:
-        def _on_query_change():
-            st.session_state.error_query_idx = st.session_state._error_query_select
+    def _on_query_change():
+        st.session_state.error_query_idx = st.session_state._error_query_select
+        st.session_state.pop("show_export", None)
 
+    def _go_prev():
+        idx = st.session_state.error_query_idx
+        if idx > 0:
+            st.session_state.error_query_idx = idx - 1
+            st.session_state._error_query_select = idx - 1
+            st.session_state.pop("show_export", None)
+
+    def _go_next():
+        idx = st.session_state.error_query_idx
+        if idx < len(query_ids) - 1:
+            st.session_state.error_query_idx = idx + 1
+            st.session_state._error_query_select = idx + 1
+            st.session_state.pop("show_export", None)
+
+    with col_prev:
+        st.button("< Prec", use_container_width=True, on_click=_go_prev)
+    with col_next:
+        st.button("Suiv >", use_container_width=True, on_click=_go_next)
+    with col_select:
         st.selectbox(
             "Query", range(len(query_ids)),
             index=current_idx,
@@ -534,7 +551,7 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
 
     # --- Top-5 retrouve ---
     st.markdown("### Top-5 retrouve")
-    for doc in q["retrieved_top100"][:5]:
+    for i, doc in enumerate(q["retrieved_top100"][:5]):
         doc_id = doc["doc_id"]
         is_relevant = doc_id in expected_ids
         doc_data = corpus.get(doc_id)
@@ -543,14 +560,16 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
             label = f":green[Rang {doc['rank']}] — **{title}** — score {doc['score']:.4f}  :white_check_mark:"
         else:
             label = f"Rang {doc['rank']} — **{title}** — score {doc['score']:.4f}"
-        with st.expander(label):
+        with st.expander(label, expanded=False, key=f"err_top5_{qid}_{i}"):
             st.markdown(f"`{doc_id}`")
             if doc_data:
                 render_doc_text(doc_data["text"], key=f"err_ret_{qid}_{doc_id}")
 
     # --- Export ---
     st.divider()
-    if st.button("Copier pour l'IA", key=f"export_{qid}"):
+    if st.button("Copier pour l'IA"):
+        st.session_state.show_export = qid
+    if st.session_state.get("show_export") == qid:
         md = export_query_markdown(q, corpus, ann)
         st.code(md, language="markdown")
 
@@ -582,7 +601,7 @@ def render_query_detail(q: dict, corpus: dict):
 
     # ── Top retrieved ──
     st.markdown("### Top 10 retrieved")
-    for doc in q["retrieved_top100"][:10]:
+    for i, doc in enumerate(q["retrieved_top100"][:10]):
         doc_id = doc["doc_id"]
         is_relevant = doc_id in expected_ids
         doc_data = corpus.get(doc_id)
@@ -594,7 +613,7 @@ def render_query_detail(q: dict, corpus: dict):
         else:
             label = f"Rang {doc['rank']} — **{title}** — score {doc['score']:.4f}"
 
-        with st.expander(label):
+        with st.expander(label, key=f"explore_ret_{q['query_id']}_{i}"):
             st.markdown(f"`{doc_id}`")
             if doc_data:
                 render_doc_text(doc_data["text"], key=f"ret_{q['query_id']}_{doc_id}")
