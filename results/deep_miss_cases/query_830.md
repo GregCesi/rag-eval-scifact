@@ -1,0 +1,43 @@
+## Query 830
+**Question** : NF2 (Merlin) causes phosphorylation and subsequent cytoplasmic sequestration of YAP in Drosophila by activating LATS1/2 kinases.
+**Meilleur rang** : 45
+
+### Document(s) attendu(s)
+
+**A genetic screen identifies an LKB1–MARK signalling axis controlling the Hippo–YAP pathway** (`1897324`, 240 tokens, COMPLET)
+
+The Hippo–YAP pathway is an emerging signalling cascade involved in the regulation of stem cell activity and organ size. To identify components of this pathway, we performed an RNAi-based kinome screen in human cells. Our screen identified several kinases not previously associated with Hippo signalling that control multiple cellular processes. One of the hits, LKB1, is a common tumour suppressor whose mechanism of action is only partially understood. We demonstrate that LKB1 acts through its substrates of the microtubule affinity-regulating kinase family to regulate the localization of the polarity determinant Scribble and the activity of the core Hippo kinases. Our data also indicate that YAP is functionally important for the tumour suppressive effects of LKB1. Our results identify a signalling axis that links YAP activation with LKB1 mutations, and have implications for the treatment of LKB1-mutant human malignancies. In addition, our findings provide insight into upstream signals of the Hippo–YAP signalling cascade.
+
+### Top-5 retrouve
+
+**Rang 1** (score 0.5813, TRONQUE) — **Mechanosignaling through YAP and TAZ drives fibroblast activation and fibrosis.** (`11535539`)
+
+pathological fibrosis is driven by a feedback loop in which the fibrotic extracellular matrix is both a cause and consequence of fibroblast activation. however, the molecular mechanisms underlying this process remain poorly understood. here we identify yes - associated protein ( yap ) ( homolog of drosophila yki ) and transcriptional coactivator with pdz - binding motif ( taz ) ( also known as wwtr1 ), transcriptional effectors of the hippo pathway, as key matrix stiffness - regulated coordinators of fibroblast activation and matrix synthesis. yap and taz are prominently expressed in fibrotic but not healthy lung tissue, with particularly pronounced nuclear expression of taz in spindle - shaped fibroblastic cells. in culture, both yap and taz accumulate in the nuclei of fibroblasts grown on pathologically stiff matrices but not physiologically compliant matrices. knockdown of yap and taz together in vitro attenuates key fibroblast functions, including matrix synthesis, contraction, and proliferation, and does so exclusively on pathologically stiff matrices. profibrotic effects of yap and taz operate, in part, through their transcriptional target plas
+
+--- ✂ coupe 256 tokens ---
+
+##minogen activator inhibitor - 1, which is regulated by matrix stiffness independent of transforming growth factor - β signaling. immortalized fibroblasts conditionally expressing active yap or taz mutant proteins overcome soft matrix limitations on growth and promote fibrosis when adoptively transferred to the murine lung, demonstrating the ability of fibroblast yap / taz activation to drive a profibrotic response in vivo. together, these results identify yap and taz as mechanoactivated coordinators of the matrix - driven feedback loop that amplifies and sustains fibrosis.
+
+**Rang 2** (score 0.5771, COMPLET) — **TEAD mediates YAP-dependent gene induction and growth control.** (`12737132`)
+
+The YAP transcription coactivator has been implicated as an oncogene and is amplified in human cancers. Recent studies have established that YAP is phosphorylated and inhibited by the Hippo tumor suppressor pathway. Here we demonstrate that the TEAD family transcription factors are essential in mediating YAP-dependent gene expression. TEAD is also required for YAP-induced cell growth, oncogenic transformation, and epithelial-mesenchymal transition. CTGF is identified as a direct YAP target gene important for cell growth. Moreover, the functional relationship between YAP and TEAD is conserved in Drosophila Yki (the YAP homolog) and Scalloped (the TEAD homolog). Our study reveals TEAD as a new component in the Hippo pathway playing essential roles in mediating biological functions of YAP.
+
+**Rang 3** (score 0.5322, TRONQUE) — **Phosphorylation site mutations in heterochromatin protein 1 (HP1) reduce or eliminate silencing activity.** (`8417211`)
+
+hp1 is an essential heterochromatin - associated protein in drosophila. hp1 has dosage - dependent effects on the silencing of euchromatic genes that are mislocalized to heterochromatin and is required for the normal expression of at least two heterochromatic genes. hp1 is multiply phosphorylated in vivo, and hp1 hyperphosphorylation is correlated with heterochromatin assembly during development. the purpose of this study was to test whether hp1 phosphorylation modifies biological activity and biochemical properties of hp1. to determine sites of hp1 phosphorylation in vivo and whether phosphorylation affects any biochemical properties of hp1, we expressed drosophila hp1 in lepidopteran cultured cells using a recombinant baculovirus vector. phosphopeptides were identified by matrix - assisted laser desorption ionization / time of flight mass spectroscopy ; these peptides contain target sites for casein kinase ii, protein tyrosine kinase, and pim - 1 kinase. purified hp1 from bacterial ( unphosphorylated ) and lepidopteran ( phosph
+
+--- ✂ coupe 256 tokens ---
+
+##orylated ) cells has similar secondary structure. phosphorylation has no effect on hp1 self - association but alters the dna binding properties of hp1, suggesting that phosphorylation could differentially regulate hp1 - dependent interactions. serine - to - alanine and serine - to - glutamate substitutions at consensus protein kinase motifs resulted in reduction or loss of silencing activity of mutant hp1 in transgenic flies. these results suggest that dynamic phosphorylation / dephosphorylation regulates hp1 activity in heterochromatic silencing.
+
+**Rang 4** (score 0.5105, TRONQUE) — **Regulation of Hippo pathway transcription factor TEAD by p38 MAPK-induced cytoplasmic translocation** (`52873726`)
+
+the hippo pathway controls organ size and tissue homeostasis, with deregulation leading to cancer. the core hippo components in mammals are composed of the upstream serine / threonine kinases mst1 / 2, mapk4ks and lats1 / 2. inactivation of these upstream kinases leads to dephosphorylation, stabilization, nuclear translocation and thus activation of the major functional transducers of the hippo pathway, yap and its paralogue taz. yap / taz are transcription co - activators that regulate gene expression primarily through interaction with the tea domain dna - binding family of transcription factors ( tead ). the current paradigm for regulation of this pathway centres on phosphorylation - dependent nucleocytoplasmic shuttling of yap / taz through a complex network of upstream components. however, unlike other transcription factors, such as smad, nf - κb, nfat and stat, the regulation of tead nucleocytoplasmic shuttling has been largely overlooked. in the present study, we show that environmental stress promotes tead cytoplasmic translocation via p38 mapk in a hippo - independent
+
+--- ✂ coupe 256 tokens ---
+
+manner. importantly, stress - induced tead inhibition predominates yap - activating signals and selectively suppresses yap - driven cancer cell growth. our data reveal a mechanism governing tead nucleocytoplasmic shuttling and show that tead localization is a critical determinant of hippo signalling output.
+
+**Rang 5** (score 0.5039, COMPLET) — **Dishevelled Activates JNK and Discriminates between JNK Pathways in Planar Polarity and wingless Signaling** (`30675656`)
+
+Frizzled family proteins have been described as receptors of Wnt signaling molecules. In Drosophila, the two known Frizzled proteins are associated with distinct developmental processes. Genesis of epithelial planar polarity requires Frizzled, whereas Dfz2 affects morphogenesis by wingless-mediated signaling. Dishevelled is required in both signaling pathways. Here, we use genetic and overexpression assays to show that Dishevelled activates JNK cascades. Rescue analysis reveals different protein domain requirements in Dishevelled for the two pathways; the C-terminal DEP domain is essential to rescue planar polarity defects and induce JNK signaling. Furthermore, the planar polarity-specific dsh1 allele is mutated in the DEP domain. Our results indicate that different Wnt/Fz signals activate distinct intracellular pathways, and Dishevelled discriminates among them by distinct domain interactions.

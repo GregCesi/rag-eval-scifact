@@ -1,0 +1,202 @@
+{
+  "13": {
+    "categorie": "Q-inférence",
+    "rang_golden": 17,
+    "note": "le golden ne statue PAS sur le claim (sujet différent : childhood underweight prevalence ≠ perinatal mortality cause), annotation gold probablement erronée ou très tangentielle."
+  },
+  "70": {
+    "categorie": "combo",
+    "rang_golden": 15,
+    "note": "Les deux goldens statuent sur le claim (PPM1D supprime p53) mais le retriever s'ancre sur \\\"p53 + suppression\\\" (tokens fréquents) en ignorant \\\"PPM1D\\\" (token rare), provoquant un flood de distractors p53-génériques ; la truncation du golden 4414547 aggrave en supprimant le passage le plus explicite."
+  },
+  "128": {
+    "categorie": "Q-inférence",
+    "rang_golden": 74,
+    "note": "Le golden NON — il énumère artérioles/vénules comme produits d'angiogenèse sans jamais comparer leurs diamètres luminaux ; miss légitime sur un fait textbook absent du corpus."
+  },
+  "198": {
+    "categorie": "Q-inférence",
+    "rang_golden": 81,
+    "note": "Le golden ne statue pas directement sur la localisation de CCL19 dans les dLNs ; il faut une inférence multi-sauts (dLNs = organes lymphoïdes secondaires + CCL19 y forme des gradients solubles → réfute l'absence), hors de portée du retriever dense."
+  },
+  "239": {
+    "categorie": "combo",
+    "rang_golden": 24,
+    "note": "Le golden statue OUI (perceived age corrèle avec telomere length) mais le double gap lexical (cellular→molecular/telomere, appearance→perceived age) combiné à 5 distracteurs saturant le champ \\\"aging\\\" noie le signal."
+  },
+  "294": {
+    "categorie": "combo",
+    "rang_golden": 12,
+    "note": "Le golden statue OUI (DSB hot spots = précurseurs des crossovers) mais n'utilise jamais \\\"crossover\\\" ni \\\"promoter\\\", et les distractors monopolisent ces termes de surface."
+  },
+  "314": {
+    "categorie": "C-sémantique",
+    "rang_golden": 71,
+    "note": "Le golden statue OUI (confirme le mécanisme déamination→hypermutation G-to-A) mais reformule à un niveau d'abstraction plus élevé (\\\"dc deamination\\\", \\\"lethal editing\\\") sans les termes exacts du claim (\\\"cytidine→uridine\\\", \\\"minus strand\\\"), tandis que les rangs 1-2 contiennent ces termes verbatim, repoussant le golden au rang 71 par saturation thématique."
+  },
+  "384": {
+    "categorie": "combo",
+    "rang_golden": 36,
+    "note": "Le golden STATUE (via SDI vs metabolic risks dans les findings) mais la troncation élimine l'evidence des findings et le gap lexical NCD↔metabolic risks + economic settings↔SDI empêche le match dense."
+  },
+  "415": {
+    "categorie": "T",
+    "rang_golden": 12,
+    "note": "Le golden statue OUI (RR 4.20 chez porteuses APOE4) mais le passage-clé est après la troncation, laissant en fenêtre visible uniquement le cadrage estrogènes/ménopause sans mention d'APOE4."
+  },
+  "431": {
+    "categorie": "combo",
+    "rang_golden": 11,
+    "note": "Le golden statue OUI (FOXO3 + stress oxydatif + mort cellulaire) mais le gap lexical (ROS/neuronal absents) et l'angle sémantique décalé (régulation SIRT1 plutôt que mécanisme direct) le font classer derrière des distracteurs plus alignés lexicalement et conceptuellement."
+  },
+  "475": {
+    "categorie": "Q-saturation",
+    "rang_golden": 18,
+    "note": "Le golden présuppose le claim sans y statuer (NON) ; le signal \\\"glycolysis\\\" sature le corpus (5+ docs aussi proches), rendant le ranking du golden arbitraire — Q-saturation."
+  },
+  "508": {
+    "categorie": "Q-inférence",
+    "rang_golden": 12,
+    "note": "Le golden ne statue PAS sur le taux de pureté — il décrit un protocole d'enrichissement HSC sans chiffre, le retriever ne peut pas rapprocher un claim quantitatif d'un abstract purement qualitatif."
+  },
+  "517": {
+    "categorie": "Q-inférence",
+    "rang_golden": 99,
+    "note": "Le golden statue sur BNP et diabète T2, PAS sur copeptin et diabète — ce sont deux biomarqueurs biologiquement distincts (copeptin = fragment pro-AVP, BNP = peptide natriurétique cardiaque) ; le retriever ne peut pas et ne DOIT pas relier ces deux concepts sans inférence experte, c'est un cas de qrel questionnable plutôt qu'une erreur de retrieval."
+  },
+  "527": {
+    "categorie": "C-sémantique",
+    "rang_golden": 13,
+    "note": "Le golden statue OUI (il RÉFUTE : la perturbation Sbds induit le stress oxydatif, ne l'empêche pas), mais le retriever échoue car le golden reformule entièrement le vocabulaire du claim (SDS vs Sbds, mesenchymal niche vs MPCs osterix+) et inverse la polarité, créant un faible recouvrement cosinus face au doc rang 1 qui contient \\\"deletion of sbds in osteoprogenitors\\\" quasi verbatim."
+  },
+  "544": {
+    "categorie": "Q-inférence",
+    "rang_golden": 11,
+    "note": "Le golden statue sur RIG-I et la tolérance au cap N1-2'O-méthylé du soi, PAS sur IFIT1 ni sur la séquestration d'ARN mal cappés — le lien IFIT1 n'apparaît qu'incidemment dans le rang 1 ; l'annotation qrel est discutable (Q-inference : il faut inférer via le pathway partagé que RIG-I et IFIT proteins coopèrent, mais le golden ne répond pas directement au claim sur IFIT1)."
+  },
+  "554": {
+    "categorie": "Q-inférence",
+    "rang_golden": 11,
+    "note": "Le golden statue sur NETosis et libération d'ADN mitochondrial oxydé déclenchée par des immune complexes, mais ne mentionne JAMAIS HMGB1 ; le lien claim→golden repose sur une inférence externe (HMGB1 est un composant connu des NETs), ce que le retriever dense ne peut pas capturer — annotation douteuse côté dataset."
+  },
+  "560": {
+    "categorie": "Q-inférence",
+    "rang_golden": 80,
+    "note": "Le golden ne statue PAS sur le claim général \\\"immune responses produce Th17 and iTregs\\\" ; il décrit un mécanisme compensatoire spécifique (TGF-β CD4+ T cells protégeant de la colite lors d'une perméabilité épithéliale accrue), ce qui nécessite une inférence experte pour relier ce cas particulier à l'énoncé générique sur Th17/iTregs — le top-5 (rang 1 et 4 notamment) traite directement et explicitement de la différenciation Th17/iTreg."
+  },
+  "587": {
+    "categorie": "C-sémantique",
+    "rang_golden": 36,
+    "note": "Le claim décrit le protocole expérimental (colocalize, green fluorescent protein, proliferation markers) tandis que le golden synthétise le résultat au niveau abstrait (differ in proliferation levels), créant un gap sémantique que l'embedding dense ne franchit pas — les distracteurs captent les termes de surface (GFP, Sox2) dans des contextes non pertinents."
+  },
+  "619": {
+    "categorie": "C-sémantique",
+    "rang_golden": 11,
+    "note": "Le claim formule une relation abstraite (vessel density + fibrosis → chemo efficacy) que les goldens expriment via des mécanismes moléculaires spécifiques (inhibition Hedgehog / déplétion HA → re-expansion vasculaire → meilleure délivrance gemcitabine dans PDA murin), créant un gap d'abstraction que le dense retrieval ne parvient pas à combler — rang 11 montre que le modèle capte partiellement le voisinage sémantique sans atteindre le top-10."
+  },
+  "623": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 16,
+    "note": "Le golden mesure l'exposition solaire/UV comme proxy de la vitamine D sans jamais mentionner \\\"vitamin D\\\" ni \\\"serum\\\" ; l'embedding matche logiquement les docs qui parlent explicitement de vitamin D et MS, le saut d'inférence biologique (UV → synthèse vitamine D → taux sérique) dépasse la capacité du modèle dense."
+  },
+  "644": {
+    "categorie": "combo",
+    "rang_golden": 28,
+    "note": "Le golden couvre 6 traitements x 5 complications dans une etude de cohorte; l'embedding est dilue par la multiplicite des axes semantiques, et la troncature a 256 tokens supprime vraisemblablement les resultats specifiques insulin-kidney failure."
+  },
+  "715": {
+    "categorie": "Q-inférence",
+    "rang_golden": 33,
+    "note": "Golden étudie ceRNA hypothesis sur miR-122/hépatocytes, pas miR-7a/ovaires ; lien au claim exige un pont de domaine multi-sauts (miRNA général → miR-7a spécifique) ; rang-1 (miR-7 review) plus directement pertinent que le golden."
+  },
+  "716": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 38,
+    "note": "Golden parle de miR-122/hepatocytes (hypothèse ceRNA), pas de miR-7a/testis — mismatch complet miRNA + tissu ; rang 1 (miR-7) bien plus pertinent ; même golden douteux que Q715."
+  },
+  "743": {
+    "categorie": "T",
+    "rang_golden": 24,
+    "note": "Le mot \\\"macrolides\\\" apparaît uniquement après la coupe 256 tokens ; l'embedding ne voit qu'une étude générique antibiotiques/AMI, insuffisant pour matcher le claim spécifique."
+  },
+  "768": {
+    "categorie": "Q-inférence",
+    "rang_golden": 48,
+    "note": "Le claim porte sur le mécanisme TPMT (méthylation), le golden traite d'un mécanisme distinct (NT5C2/nucléotidase) ; le lien claim→golden exige une inférence experte (deux voies d'inactivation du même substrat), et le rang 1 est objectivement plus pertinent au claim que le golden — annotation douteuse du dataset."
+  },
+  "775": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 18,
+    "note": "Le golden traite de pol mu/lambda/TdT dans la recombinaison V(D)J sans mentionner l'IR ni la radiosensibilité ; il ne répond pas au claim, les top-5 (pol β + IR, pol mu + NHEJ, pol λ + DSB repair) sont objectivement plus pertinents."
+  },
+  "830": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 45,
+    "note": "Le golden traite d'un régulateur upstream différent (LKB1→MARK→Hippo/YAP) et ne mentionne ni NF2/Merlin ni LATS1/2 ; il partage seulement la pathway cible (Hippo-YAP) sans répondre au mécanisme spécifique du claim."
+  },
+  "870": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 22,
+    "note": "Le claim parle de \\\"life quality\\\" (qualité de vie), le golden ne traite que de mortalité/survie (BMI → mortality) sans aborder la QoL ; le rang 1 (\\\"Obesity as a medical problem\\\") couvre un spectre plus large et répond au moins aussi bien au claim vague."
+  },
+  "887": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 30,
+    "note": "Le golden traite de l'antagonisme inter-souches réduisant la production de spores, pas du taux de survie cellulaire post-différenciation en spores ; le claim porte sur un fait biologique général que ce document ne répond pas directement."
+  },
+  "1024": {
+    "categorie": "C-sémantique",
+    "rang_golden": 41,
+    "note": "Le golden est un article ESC/3D-chromatin dont l'embedding est dominé par le contexte pluripotent/enhancer/insulator ; la phrase sur les mutations CTCF en cancer n'est qu'un résultat secondaire, noyé dans un champ sémantique éloigné du claim."
+  },
+  "1041": {
+    "categorie": "Q-saturation",
+    "rang_golden": 11,
+    "note": "Corpus saturé en documents H2A.Z/yeast/promoters (top-5 tous >0.75 sur le même domaine), le dense ne discrimine pas l'angle spécifique stabilité-nucléosomale des goldens parmi la masse de hits thématiquement proches."
+  },
+  "1049": {
+    "categorie": "C-lexical",
+    "rang_golden": 21,
+    "note": "Le golden parle de \\\"Ribosomal Protein L38\\\" et \\\"tissue-specific patterning defects\\\" sans jamais mentionner \\\"ribosomopathies\\\", tandis que les top-5 matchent tous sur ce terme exact — gap lexical pur entre le vocabulaire du claim et celui du golden."
+  },
+  "1180": {
+    "categorie": "C-lexical",
+    "rang_golden": 23,
+    "note": "Le claim utilise \\\"PRR\\\" et centre sur \\\"MDA5\\\", tandis que le golden est dominé par \\\"RLR/RIG-I-like receptors\\\" avec MDA5 mentionné une seule fois dans une énumération, créant un décalage de focus lexical malgré une réponse directe au claim."
+  },
+  "1213": {
+    "categorie": "C-sémantique",
+    "rang_golden": 78,
+    "note": "Le golden répond au claim via KLF2 knockout (dérégulation de monocytes/macrophages → athérosclérose), mais son vocabulaire est centré sur KLF2/adhesion/neutrophils, créant un gap sémantique avec \\\"monocyte activation + inflammatory disease\\\" que les top-5, lexicalement plus proches du claim, comblent mieux."
+  },
+  "1272": {
+    "categorie": "C-lexical",
+    "rang_golden": 28,
+    "note": "Le claim utilise le vocabulaire d'électrophysiologie clinique (ERG, b-wave) alors que le golden décrit le même phénomène en vocabulaire de biologie moléculaire (mGluR6, ON response, synaptic transmission) — fossé sémantique pur sans problème de troncature ni de contenu."
+  },
+  "1280": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 14,
+    "note": "Le golden traite de la structure du canal à urée HpUreI, pas du gene cluster ureABIEFGH ni des protéines de maturation ; les top-5 (rang 1-3) répondent directement au claim — c'est une erreur d'annotation du dataset."
+  },
+  "1316": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 44,
+    "note": "Le golden mesure la diversité TCR post-greffe, pas le phénotype mémoire — il ne répond pas au claim ; lien claim↔golden repose sur un vocabulaire partagé (cord blood, T cells) mais pas sur le fond (memory-like phenotype vs TCR diversity)."
+  },
+  "1362": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 85,
+    "note": "Le golden décrit une réponse angiogénique incluant artérioles/venules/capillaires mais ne compare jamais leur diamètre de lumen — il ne répond pas au claim anatomique."
+  },
+  "1363": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 63,
+    "note": "Le golden mentionne artérioles et venules comme types de vaisseaux observés dans un patch cardiaque, sans jamais comparer leur couche musculaire lisse — il ne répond pas au claim anatomique."
+  },
+  "1368": {
+    "categorie": "combo",
+    "rang_golden": 11,
+    "note": "La troncature coupe les résultats clés (OR grossesse) du golden, et le signal \\\"vitamin D deficiency\\\" est noyé par 5+ articles généralistes sur la vitamine D qui saturent le top-k sans lien avec la grossesse/delivery."
+  }
+}

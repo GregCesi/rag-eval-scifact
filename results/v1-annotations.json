@@ -50,5 +50,225 @@
   "831": {
     "categorie": "Q",
     "note": "Le coeur NF2 ou Merlin n'existe pas.\nLes top rang parle de drosophile contrairement au doc attendu. qui parle directement de YAP, plus rapide. \n\nEn gros aucun doc ne repond parfaitement a la question."
+  },
+  "834": {
+    "categorie": "Q",
+    "note": "On parle pas de NOX2 ni de nitrogen. Dans le rang 1 on parle de Nitric oxyde, je ne sais pas si c'est la meme chose. \n\nTrop technique un peu du mal a comprendre la.\n\nQ il parait que rang 1 et 4 parlent plus du mecanisme de la question que le doc attendu"
+  },
+  "975": {
+    "categorie": "C",
+    "note": "Bon j'ia l'impression que ca ressemble encore a du Q. \ndoc attendu parle d'inflamation et de cytokine dans l'anti-inflamation. Le doc parle de l'influence de la citokyne sur bacterie et champignons. \n\nLe rang-1 parait tout aussi bon.\n\nCependant c'est uen faute le gold est géneral, le rang-1 parle d'un autre cas particulier. Les deux sont en soit mauvais, donc Q difficile."
+  },
+  "1110": {
+    "categorie": "T",
+    "note": "rang-1 a l'air un peu de répondre a la question\n\nLe doc attendu est plus complet mais la conclusion qui y répond est tronqué. j'aurai envie de le mettre en T, cependant un Q ne serais pas totalement faux car rang-1 est bien mais le doc attendu est plus complet."
+  },
+  "1175": {
+    "categorie": "T ( recuperation lexical manqué).",
+    "note": "Très technique rien compris. \n\nOn remarque que MDA5 est present dans le doc attendu et pas dans les autres. Mot rare non interprété. UN BM25 l'aurait remonté."
+  },
+  "1179": {
+    "categorie": "T ( recuperation lexical manqué).",
+    "note": "Idem qu'avant MDA5 non retrouvé. Un BM25 l'aurai fais remonté"
+  },
+  "1199": {
+    "categorie": "Q",
+    "note": "colchicine absent du corpus. On recherche ces benefices.\n\nstatins qui est le deuxième mot clé de la requete est lui largement retrouvé dans les top rang mais rien avec la colchicine et pas dans le golden. \n\nle golden est intéressant car je n'y comprend rien. Et je en vois pas le rapport réel avec la question. ON serait sur un Q"
+  },
+  "1200": {
+    "categorie": "T ( recuperation lexical manqué).",
+    "note": "On la on est sur une comparaison. \n\nDoc attendu repond a  ce que fais l'un des deux.\nLes autres parles de sujet autour. trpml1 est clairment ce qui devrait faire remonter le doc. DOnc on est sur un BM25 manquant selon moi ici. Donc T"
+  },
+  "1226": {
+    "categorie": "Q",
+    "note": "On est dans un cas ou le golden et le rang 1 parle de TET mais dans des cas differents que la question. \n\ngolden : production de 5-hydroxyméthylcytosine\nrang -1 : TET dans maladies hématopoïétiques\n\nOn est sur un cas ou aucun doc ne repond clairement a la question le golden se rapproche un peu moin que le rang-1 selon moi qui parle de tumeur (partie tronqué ) vu que le vrai doc parfait parlerait de cancer. je dirais Q"
+  },
+  "1332": {
+    "categorie": "C (BM25-partiellement-récupérable)",
+    "note": "Sonde = relation d'inhibition TNF/IL-1 → IL-6/IL-10, pas les entités seules. Gold 5304891 contient \"IL-6\" mais parle de génétique de la production cytokinique (QTLs, SNPs), jamais de la relation d'inhibition — absente avant ET après coupe, donc pas T. Rang 1 (0.6065, anti-TNFα auto-immunité) ne bat pas le gold sur le mécanisme, juste plus riche en vocab cytokine. Balayage rangs 2-5 : rang 4 (CRP decreases IL-10) et rang 3 (IL-6 vs IL-1β/TNFα arthrite) touchent des relations inter-cytokines mais aucun ne pose exactement le claim → aucun top-5 défendable comme gold. Pas de Q. Retriever aspiré par champ lexical cytokine saturé, gold exilé par sens global génétique. Profil = jumeau de 975. Claim probablement \"refuted\" (TNF/IL-1 induisent plutôt IL-6). BM25 pourrait remonter via \"IL-6\" mais sans garantie (champ dense)."
+  },
+  "1": {
+    "categorie": "C",
+    "note": "Rang 5 : mauvais score : 0.2916\n\nrang-1 seulement : 0.3540\n\nLa question semble très général, tandis que les doc parle de quelque chose de specifique. \n\nDifficile à comprendre."
+  },
+  "3": {
+    "categorie": "Q",
+    "note": "Ok les top 3 parlent de rare variants. J'ia du mal a savoir pourquoi 3 est mieux que 1 et 2. Ils sont tous bon."
+  },
+  "5": {
+    "categorie": "C ( recuperation lexical manqué).",
+    "note": "Rang 1 et 2 parlent de UK. Sauf que 2 parle de PrP, tandis que rang-1 n'en parle pas. Pourquoi 1 audessis de 2 ? UN BM25 le ferait remonter ? Donc un C lexical ?"
+  },
+  "36": {
+    "categorie": "Q",
+    "note": "On ne parle pas de B12 dans les top et le golden. \n\nPar contre on parle de homocysteine. Aucun doc fais le lien direct entre B12 et homocysteine. Le rang-1 parle pas mal de vitamine comparé au golden.\n\nDifficile a classé soit c'est du Q, soit c'est du C parce que je ne comprend pas que le golden repond mieux que le rang-1"
+  },
+  "42": {
+    "categorie": "C-lexical",
+    "note": "Ok donc le golden a l'air vraiment au-dessus du lot il parle de microérythrocytes et d'anémie.  score 0,6758 contre Score 0,6962 pour le rang-1.\n\nRang-1 ne parle pas de microerythrocyte, et arrive devant. Ce serait un C ici alors, du a une faute lexical."
+  },
+  "75": {
+    "categorie": "C-lexical",
+    "note": "UreB inexistant du coprus. \n\nUreA uniquement dans le golden. \n\nLe rang-1 parle de ureD, uref, ureg mais pas de ureA\n\nle golden parle aussi de Helicobacter pylori, bon bref on voit clairement que le golden est le meilleur doc. le rang-1 parle de sujet proche mais ne reprend pas tous les termes surement un C-lexical aussi."
+  },
+  "94": {
+    "categorie": "Q",
+    "note": "Albendazole mot rare du corpus ni dans le golden et dans le top rang. \n\nlymphatic filariasis est dans le golden. Cependant pas sur qu'on en parle dans le cas de l'Albendazole. Soit c'est un C semantique mot rare correspondant introuvé. Soit aucun n'est meilleur que l'autre. Plus complexe, logiquement un BM25 sur lymphatic filariasis ferait remonter au rang-1, mais bon pas un cas ou le golden est vraiment audessus du lot pour la réponse."
+  },
+  "99": {
+    "categorie": "C-lexical",
+    "note": "PGAM1 en sur-représentation dans le golden. Le rang-1 ne l'a pas mais a un meilleur score.\n\nCas C car le golden est le seul a représenté PGAM1 et est donc le meilleur doc."
+  },
+  "100": {
+    "categorie": "C",
+    "note": "Tous parle de hematopoietic\n\nOn sens quand meme que le titre du golden est proche de la query. Il semble être le meilleur doc donc on supprime Q. \n\nLe 3 parle de steam cells segregate on est dans le thèmes. les autres sont aussi dans le thème mais parle d'autre sujet. C'est un C, il faut mieux remonter les termes de la query segregate."
+  },
+  "118": {
+    "categorie": "C-lexical faible",
+    "note": "Bon la c'est claire le golden a le meilleur claim. Mais rang-1 est aussi pertinent. \n\nmaintenant pourquoi seulement deuxième ? Il se perd surement sur les valeurs sémantiques qui sont proche dans le vocabulaire général. C'est typiquement le cas ou un BM25 aurait fait mieux matcher le golden."
+  },
+  "148": {
+    "categorie": "C sémantique léger",
+    "note": "Ok je compare rang 1 a rang 2. \n\nBon les deux ont l'air de parler de la meme chose.  J'ai l'impression que rang-1 est un peu plus général que le golden. Mais repond parfaitement à la question. On serait sur un genre de Q car les deux sont très bon. J'ai l'impression que le golden est plus specifique a parler d'aged."
+  },
+  "208": {
+    "categorie": "T + C-lexical",
+    "note": "Rang-1 parle de breast cancer mais pas de CHEK2. \nRang-2 parle d'autre tumeur.\n\nle rang 3 le golden contient tout est a l'air d'avoir le meilleur claim. il parle de CHEK 2, de breast cancer. \n\nDonc pas de Q logiquement. Maintenant pourquoi seulement 3ème. score < 0.6 pour le premier. Erreur du a des notions sémantiquement proche qui bruite. Recherche lexical donc C-lexical je dirais\nleger perte d'info du au troncage."
+  },
+  "212": {
+    "categorie": "Q C-semantique",
+    "note": "CR mot clé qui signifie caloric restriction uniquement dans le golden. En lien avec la methylation. Logiquement golden meilleur claim donc pas de Q. \n\nLes autres parles de methylation mais pas de CR. Attention une recherche BM25 ne fonctionnerai logiquement pas. Le problème est du au fais que CR n'est pas autant remonté en tant que calorie restriction.\n\nCatégorie C mais sémantique ou lexical ? Je ne sais pas...\n\nVerdict retenu : Q (rang-3 4434951 = jumeau pertinent \"calorie restriction + méthylation\") — surcouche C-sémantique (acronyme \"CR\" ↔ \"caloric restriction\" non résolu, explique rang 6) — gold rang 6 — non-actionnable."
+  },
+  "213": {
+    "categorie": "",
+    "note": "Rang 1 et 2 ont l'air de répondre a la question, tout autant que le golden. Je ne saurais dire s'il y en a un qui est meilleur. On se rapproche d'un Q\n\nPour aller plus loin, on remarque que la question a des termes techniques très bien retrouvé CRP ou CABG surgery qui se rapproche d'une operation au coeur. La partie tronqué contiennent t'elle des infos intéressantes. Bon bref compliqué, est-ce qu'il u a une meilleure réponse vu qu'elle se rapproche toute de la question ?"
+  },
+  "238": {
+    "categorie": "Q-inférence",
+    "note": "Golden set lie microARN et le stress. Est-ce que le stress se carectériqe par une restriction en méthionine ? \n\nSi oui alors on peut supprimer le Q, si non on analyse le rang-1 :\nParle aussi des microARN, mais rien par rapport a une restriction en méthionine. Donc pas de Q, golden au moins aussi bien que rang-1. \n\nBon sinon j'ai du mal a savoir qui est meilleur entre rang 1 et golden. Je mettrai un Q."
+  },
+  "248": {
+    "categorie": "C-lexical",
+    "note": "Le golden parle bien d'acide chénodésoxycholique sur l'activié tissu adipeu brun humain. Meme cas qu'avant est-ce que 'activité du tissu adipeux brun humain est egale a la dépense énergétique globale ? \n\nBon le golden semble bien meilleur que les autres qui ne parlent pas d'acid, pas de CDCA, bref, la on est typiquement sur un cas ou une recherche lexical aurait fait remonté le doc. On est sur un C lexical. Je pense que le dense retrieval met les autres docs sur une plan egalitaire semantique."
+  },
+  "249": {
+    "categorie": "DOUBLON",
+    "note": ""
+  },
+  "261": {
+    "categorie": "Q de saturation",
+    "note": "Ok je ne vais pas recherche plus loin, le golden donne la réponse cependant elle est dans la partie tronqué. \n\nCependant, je regarde le rang-1 et le rang-1 donne la meme conclusion chez des humain et pas chez des porcs. Je dis pas que c'est mieux mais en réalite on peut aussi se questionner si le golden est le meilleur doc ou s'il est aussi bien que le rang-1. Je reste sur T mais attention au Q caché."
+  },
+  "275": {
+    "categorie": "N (near-cosmetic multi-gold) + Q-saturation sous-jacent",
+    "note": "Ok premier cas a plusieurs doc. Les 3 dans le top 5. C'est vraiment pas mal. \n\nLa question c'est pourquoi rang-1 et rang-3 ce sont glissé ici. \nBon déjà tous les docs parlent répondent plus ou moins a la question. techniquement j'ai du mal a voir si l'un est superieur a l'autre. Mais j'ai l'impression que 1 repond aussi a la question. \n\nCe cas la est particulier. ON serait peut-être dans un leger Q."
+  },
+  "295": {
+    "categorie": "C-sémantique relationnel",
+    "note": "bon celui j'ai beaucoup de mal je t'avoue. \n\nPremierement est-ce que le golden est un bon claim ? Personnellement je trouve bof. Cependant ca parle de chose assez proches, la partie tronqué apporte des termes intéressants dans le golden. \n\nCependant aucun parle  intestinal homeostasis contrairement a au golden. Bref je n'arrive pas a savoir si le golden est le meilleur claim. Si les autres top rang sont aussi bon ou moins bon que le golden. \n\nDonc comme ca je mettrais un leger T, et une reserve sur le Q car trop complexe est pas assez visible pour la pertinence."
+  },
+  "300": {
+    "categorie": "Q-inférence",
+    "note": "Le gold nomme IRP2 = \"iron-responsive element-binding protein 2\" — l'acteur exact du claim — mais ne décrit pas le mécanisme de liaison : il l'utilise comme tremplin pour parler de COPD/mitochondrie. Le claim (\"protéines cytosoliques se lient aux IRE\") est une connaissance de fond que le gold présuppose, pas qu'il énonce.C'est le pattern du cas 15 (methionine→stress) : Q-inférence. Le gold est le bon doc par la biologie (IRP2 EST la protéine qui lie les IRE, c'est un fait de domaine), mais le lien query↔gold passe par un savoir présupposé, pas par une phrase explicite matchable. Le dense ne fait pas ce pont ; le rang-1, lui, remonte plus haut juste parce qu'il a \"iron uptake mRNAs\" en surface (faux-ami lexical)."
+  },
+  "324": {
+    "categorie": "Q-inférence",
+    "note": "Raptor dans aucun doc se rapproche de mTORC1, beaucoup dans le rang-1 mais ne parle pas de G-CSF. Le golden on a l'impression que c'est l'inverse je ne vois pas de lien avec raptor. \n\nOn serait dans un cas Q ou aucun ne repond parfaitement a la question.\n\nGold 2014909 a G-CSF (cœur causal) mais pas \"Raptor\" ; le lien exige de savoir que Raptor⊂mTORC1 ; rang-1 a \"Raptor deletion\" mais pas G-CSF → demi-pertinent, faux-ami. Aucun levier ne franchit le pont de domaine. Gold rang 2 — non-actionnable."
+  },
+  "338": {
+    "categorie": "C-lexical",
+    "note": "Ok la on est dans un cas hyper intéressant. \n\nBon le golden est le meilleur doc il parle de Dexamethasone et de postoperative bleeding. Donc parfait ce n'est pas un Q. \nEnsuite on a le rang-1 qui parle de Dexamethasone et de  vomiting pas de bleeding. On est sur un problème sémantique ou comme rang-1 a des termes proches, il noit les deux ensembles. Le rang-3 parle de saignement mais pas avec Dexamethasone. \n\nBref je pense qu'on est sur un C-lexical qui pourrait aider. On a aussi un petit T mais ce n'est pas lui qui fera réellement remonté le doc."
+  },
+  "385": {
+    "categorie": "N (multi-gold, couverture top-3 complète) + Q-saturation (rang-1 pertinent non annoté)",
+    "note": "Le rang-1 parle de  Epigenetic Modifying Agents, le golden parle de Epigenetic therapy activates, la query de Epigenetic modulating agents. \n\nBon déjà la j'ai un problème j'ai l'impression qu'il sont tous proche mais pas precis sur le sujet, ou c'est que je ne connais pas assez. \n\nBon j'ai l'impression que le golden repond un peu mieux a la question que le rang-1. Cependant le rang-1 parle du même sujet est court. Peut-être noyé semantiquement. \n\nBon celui est compliqué. les 3 premiers sont pertinants donc N"
+  },
+  "388": {
+    "categorie": "Q-inférence",
+    "note": "IBP, terme technique pas parfaitement retrouvé. Signification ? Ice Binding Protein ? \n\nJ'y comprend rien j'ai pas l'impression que le golden repond a la question donc on serait sur un Q. Après on est dans le thème ethanol et bactérie mais pas de IBP. \nRang-1 parle d'un autre stress du a une cellule ethanologène."
+  },
+  "452": {
+    "categorie": "Q-saturation",
+    "note": "Bon pour te faire plaisir, les golden repondent negativement. je l'ai vu. \n\nBon le golden repond a la questio. négativement, le rang-1 a l'air d'aussi bien répondre que les autres. On serait peut-être dans un Q-saturation."
+  },
+  "507": {
+    "categorie": "Q-saturation",
+    "note": "le golden repond plus ou moins a la question. La query est très très précise. \n\nRang-1 (7433668) : helminthe (Nippostrongylus) + IL-4Rα + alternatively activated macrophages + ↑ charge Mtb. Il coche les TROIS briques. C'est le doc qui pose littéralement le claim entier.\nGold (30774694) : Th2 cytokines (IL-4/IL-13) inhibent l'autophagie → macrophages perdent le contrôle de Mtb. Il coche la brique 2 (IL-4) et 3 (Mtb), mais pas la brique 1 : aucun helminthe. Il parle du mécanisme cytokine→macrophage, sans l'agent helminthique.\n\nQ-saturation,"
+  },
+  "513": {
+    "categorie": "N + Q-saturation",
+    "note": "Bon pour le golden la conclusion répondant est clairement tronqué. Il remonte quand meme en rang 2 malgré cela. Beau travail du dense, on a l'impression qu'il devine la suite a partir du début. Je suis très etonné a quel point la troncation n'est pas un problème. \n\nBon tous les documents du top on l'air intéressant. Le problème c'est que le rang-1 specifique au diabétique tandis que golden plus général. C'est intéressant. \n\nJe met dans Q-saturation cependant je laisse une reserve car le golden a l'air d'être le meilleur claim. Juste pas réellement de facon de le faire remonter"
+  },
+  "535": {
+    "categorie": "Q-inference",
+    "note": "Ok deja golden est le meilleur claim pas de doute. \n\nOn a rang-1 : PArle de diabète général\nrang-2 : corrélation diabete type 2 et hypertension. On parle de diabete type 1\nrang-3 : diabète type 2\nrang-4 : golden : Correlation hupertension glucose, donc se rapproche de diabète. Aussi bien que le 2. Ne repond pas clairement au claim\n\nQ-inférence."
+  },
+  "540": {
+    "categorie": "Q-saturation",
+    "note": "Multi-doc. Un de golden est en rang-4 l'autre on ne sais pas. \n\nDoc plutot complexe. je peux pas affirmer que les golden repondent a la query mais j'ai l'impression. \n\nIdem pour les top rang. J'ai l'impression qu'il parle de la meme chose mais trop technique pour la subtilité. Le rang-1 a l'air quand meme plus vulgarisé que les autres mais a un meilleur score sémantique."
+  },
+  "551": {
+    "categorie": "C-sémantique",
+    "note": "Bon très difficile, très technique. Rang-2 pour le golden. \n\nD'après Claude, golden répond mieux au claim que rang-1 donc C-semantique."
+  },
+  "569": {
+    "categorie": "C-lexical",
+    "note": "Bon le golden dis : \"whereas adult tissues contain a predominance of memory t cells\". \n\nIl répond clairement au claim mieux que les autres. Pas de Q ici. \n\nLe problème c'est que sémantiquement on parle des memes notions. C'est vraiment l'isolation de la réponse a la question, qui n'est pas recupere et place le doc qu'en deux. \nCe serait un C-lexical car un BM25 ferait ressortir le golden."
+  },
+  "575": {
+    "categorie": "Q-inference.",
+    "note": "Bon d'office rapidement Q-inference. \n\nPourquoi golden parle de  domesticated  Saccharomyces mais pas de chromosome aneuploidy\nRang-2 parle de aneuploidy mais chez l'humain.\n\nLe rang-1 je ne comprend pas ce qu'il fais ici. \n\nConclusion Q-inference car aucun doc ne repond réellement a la question."
+  },
+  "577": {
+    "categorie": "Q-saturation",
+    "note": "Bon j'ai l'impression que le golden repond au claim. Cependant les termes techniques sont lié a un problème sémantique. Enfaite on repond a la question mais avec des synonymes. \n\nOn parle par directement de souris, ou de parasites. Assez complexe j'ai l'impression qu'on est sur un C sémantique. \n\nAvant de donner ma conclusion ecartant le Q. C'est technique mais j'ai l'impression, que le golden repond mieux au claim que les top rangs. A verifier cela changerait la conclusion. \n\nEffectivement rang-1 et 2 repond aussi bien au claim que le goldenQ-saturation"
+  },
+  "598": {
+    "categorie": "C-lexical modéré",
+    "note": "Ok bon le golden dis clairement qu'il va repondre a la question : Cette étude vise à comparer les tendances de l'incidence et de la mortalité liées au cancer du col de l'utérus en Finlande et aux Pays-Bas, en fonction de la mise en place et de l'intensité des programmes de dépistage. \nBasé sur Findlande et Pays-bas mais on s'en fout. \n\nles top rang, parleent du depistage du col de l'utérus mais pas de son incidence. Cependant sémantiquement on est proche. On serait surement dans un C lexical. Bon on pourrait legerement accusé la troncation qui fais loupé une conclusion intéressant, mais je ne pense aps que c'est le levier 1 pour ce cas."
+  },
+  "628": {
+    "categorie": "C mixte",
+    "note": "Dans le golden :  L'infection par le HTLV-I est endémique au Japon, dans les Caraïbes, en Afrique et en Mélanésie, et se rencontre également chez les immigrants originaires de ces régions en Europe.\n\nJe présupose que ca repond au claim mais bon répondre oui a la question a partir de la serait pas totalement vrai.\n\nLE rang-& trop technique pour savoir si ca repond au claim mais ca a l'air de moins bien répondre que le golden pas de Q. \nLe rang-2 ne parle meme pas d'Afrique. \n\nCependant C lexical ou sémantique, j'ai du mal a voir. Je ne vois pas réellement qu'une recherche lexical pourrait nettement améliorer le rang du golden. Donc je suis un peu perdu."
+  },
+  "637": {
+    "categorie": "Q-inference",
+    "note": "Ok le golden est pas mauvais mais il repond selon pas parfaitement a la question. les autres parlent de sujet proche. Q-inference"
+  },
+  "659": {
+    "categorie": "Q-inference",
+    "note": "Le golden ne repond pas a la question. Il dis qu'on commence a trouver quelque chose pour soigné plusieurs maladie donc la filariose lymphatique. Pas d'expliction sur ivermectine. Bon clairement un Q-inference. Ivermectin est appelé nul part donc le dataset ne contient pas Ivermectin"
+  },
+  "674": {
+    "categorie": "C-lexical",
+    "note": "Première phrase du golden : background ldl cholesterol has a causal role in the development of cardiovascular disease\n\nBon la on est clairement sur un golden qui contient le claim. verifions quand meme que ce n'est pas un Q saturation.\n\nJ'ai pas l'impression que les top soient aussi pertinent que le golden. On parle de cholesterole mais pas de causalité avec les maladies cardiovasculaire. \n\nBon je vais faire vite car l'instinct commence a parler. Selon moi on est sur du C-lexical. Un BM25 fais remonter le golden rapidement on a les memes mots des la première phrases."
+  },
+  "13": {
+    "categorie": "Q-inférence leger (il reste le meilleur doc mais ne repond pas au claim)",
+    "note": "Le golden parle bien de mortalité périnatal du au faible poid. On n'a pas de reponse explicite pour dire 5%. On a des données par pays. DOnc si on voulais verifier le claim il faudrait faire des calculs sans precision de zone géographique dans la query.\n\nLes top-rang parlent de mortalité perinatale cependant le point important n'est pas sur le faible poid a la naissance. \n\nUn peu du mal a comprendre pourquoi le golden est si loin. Une gene de saturation sémantique sur le perinatalité cependant tout ce qui est poids ou pas est remonté au meme niveau. \nDifficile peut-être un BM25 sur weight l'aurait fais remonter plus haut avec une fusuon + reranker."
+  },
+  "70": {
+    "categorie": "C-lexical",
+    "note": "Ok bon étrange je remarque qu'aucun des top rang ne contiennent PPM1D contrairement au deux doc a retrouvé. \n\nCependant p53 est largement dans les top rang. On a l'impression que le dense a fonctionné uniquement avec un des deux mots importants. Si les golden aprlen des deux termes ils ont le meilleur claim. DOnc pas de Q ici. \n\nOn a l'impression d'être dans un vrai problème de C-lexical. Un BM25 ferait remonté beaucoup plus haut les golden"
+  },
+  "128": {
+    "categorie": "Q-inference",
+    "note": "golden en 74 semantiquement il y a un problème la. \n\nBon on analyse : Deja ce que je remarque c'est qu'on a deux mots clés Arterioles et venules. non présent dans le golden (Faux venules est presente dans le gold mais est tronqué.\n\nSinon c'est hyper technique et les réponses n'ont pas l'air de repondre a la question. Dans un premier temps j'ai l'impression qu'on est sur un Q-inference"
+  },
+  "198": {
+    "categorie": "Q-inference",
+    "note": "Cas très techique, difficuluté a savoir si on repond au claim ou pas. \n\nCependant CCL19 presente dans le golden est pas dans les autres. Ils parelent d'autre CCL. dLNs Totalement non présent. \n\nBon on a l'air d'être dans un cas de Q-inference ou aucun doc ne repond a la question."
+  },
+  "239": {
+    "categorie": "C-sémantique",
+    "note": "Claim positif \n\nLe golden repond au claim. Surtout dans la partie tronqué dans la conclusion. La partie non tronqué le suggère bien. \nIl répond au claim sans en contenir les mots. \n\nRang-1 : parle de levure\nRang-2 : Parle d'epigenome, de stress et de viellisement, ne repond pas\nRang-3 : Epigénétique et veilissement\nRang-4 : Cause du vieillissement, ne parle pas d'apparence\nRang-5 : cause du vieillissement, parle âge épigénétique. \n\nBref le golden parle clairement d'age percu et vieillissement. On est en C\n\nSelon moi la difference se fait entre older apperance et perceived age. Logiquement sémantiquement ca devrait être proche. Je dirais C-sémantique. Les autres mots lexical de la query sont saturé dans les autres docs"
+  },
+  "294": {
+    "categorie": "C-sémantique",
+    "note": "Le golden répond au claim et il semble négatif, c'est un REFUTE, c'est clairement dis Ces études ont mis en évidence de vastes régions « chaudes ». On parle recombinaison méiotique, de Saccharomyces cerevisia. Bref claim négatif mais répond. \n\nToutes les infos dans la partie non tronqué. \nAucun top rang ne parlent de point chaud, ils sont tous endessous du golden pas de distractors\n\nHot spots me parait être le mot rare present dans la query et le golden mais il ne noie dans les autres mots present dans les top rang. BM25 n'arrangerai pas la situation. C-sémantique, c'est la relation entre les 3."
+  },
+  "314": {
+    "categorie": "Q-saturation",
+    "note": "Le golden ne repond pas au claim.\n\nLes top rang ne repondent pas au claim cependant je les trouve plus proche de repondre a la query que le golden. \n\nQ-saturation net pour moi."
   }
 }
