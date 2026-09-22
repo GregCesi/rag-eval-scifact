@@ -2,6 +2,14 @@
 
 Harness d'évaluation de retrieval dense sur le dataset BEIR SciFact (5183 docs scientifiques). L'éval est le livrable : métriques fait-main, zéro lib d'éval.
 
+## Résultats — baseline v1-dense (2026-07-01)
+
+| R@1 | R@5 | R@10 | R@100 | nDCG@10 | MRR |
+|-----|-----|------|-------|---------|-----|
+| 0.482 | 0.738 | 0.783 | 0.925 | 0.645 | 0.611 |
+
+Modèle all-MiniLM-L6-v2, troncature à 256 tokens (71 % des documents la dépassent). Historique complet et notes d'analyse : [RESULTS.md](RESULTS.md).
+
 ## Objectif
 
 Mesurer la qualité d'un retrieval dense mono-passage (embedding cosinus) sur SciFact, avec 6 métriques implémentées manuellement : Recall@{1,5,10,100}, nDCG@10, MRR.
