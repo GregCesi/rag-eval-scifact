@@ -15,8 +15,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
 import chromadb
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
 # --- Constantes ---
@@ -42,7 +42,9 @@ class RetrievalResult:
     # score = similarité cosinus directe (brute-force numpy)
 
 
-def load_test_queries(queries_path: Path, qrels_path: Path) -> tuple[list[dict], dict[str, set[str]]]:
+def load_test_queries(
+    queries_path: Path, qrels_path: Path
+) -> tuple[list[dict], dict[str, set[str]]]:
     """Charge les requêtes du split test et leurs qrels.
 
     Retourne:
@@ -77,8 +79,15 @@ def load_test_queries(queries_path: Path, qrels_path: Path) -> tuple[list[dict],
     return queries, qrels
 
 
-def retrieve() -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
+def retrieve(
+    top_k: int = TOP_K,
+    model_name: str = MODEL_NAME,
+    max_seq_length: int = MAX_SEQ_LENGTH,
+) -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
     """Pipeline de retrieval complet.
+
+    Les trois paramètres par défaut reproduisent v1 à l'identique ; une
+    campagne les surcharge via sa config résolue, jamais en modifiant ce fichier.
 
     Retourne:
         results: liste de RetrievalResult (1 par requête test)
@@ -88,7 +97,9 @@ def retrieve() -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
     # Charger les requêtes test et qrels
     print("Chargement des requêtes test et qrels...")
     queries, qrels = load_test_queries(QUERIES_PATH, QRELS_PATH)
-    print(f"  {len(queries)} requêtes test, {sum(len(v) for v in qrels.values())} paires qrel.")
+    print(
+        f"  {len(queries)} requêtes test, {sum(len(v) for v in qrels.values())} paires qrel."
+    )
 
     # Charger les embeddings de docs depuis ChromaDB
     print("Chargement des embeddings depuis ChromaDB...")
@@ -105,8 +116,8 @@ def retrieve() -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
 
     # Embedder les requêtes
     print("Embedding des requêtes...")
-    model = SentenceTransformer(MODEL_NAME)
-    model.max_seq_length = MAX_SEQ_LENGTH
+    model = SentenceTransformer(model_name)
+    model.max_seq_length = max_seq_length
     query_texts = [q["text"] for q in queries]
     query_embeddings = model.encode(query_texts, show_progress_bar=False, batch_size=64)
     query_embeddings = np.array(query_embeddings, dtype=np.float32)
@@ -124,29 +135,33 @@ def retrieve() -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
     sim_matrix = query_embeddings_norm @ doc_embeddings_norm.T
     print(f"  Matrice de similarité : {sim_matrix.shape}")
 
-    # Top-100 par requête (tri décroissant)
-    print("Extraction top-100 par requête...")
+    # Top-k par requête (tri décroissant)
+    print(f"Extraction top-{top_k} par requête...")
     results: list[RetrievalResult] = []
 
     for i, query in enumerate(queries):
         scores = sim_matrix[i]
         # argpartition pour efficacité, puis tri des top-k
-        top_indices = np.argpartition(scores, -TOP_K)[-TOP_K:]
+        top_indices = np.argpartition(scores, -top_k)[-top_k:]
         top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
 
         retrieved = []
         for rank, idx in enumerate(top_indices, start=1):
-            retrieved.append({
-                "doc_id": doc_ids[idx],
-                "rank": rank,
-                "score": float(scores[idx]),
-            })
+            retrieved.append(
+                {
+                    "doc_id": doc_ids[idx],
+                    "rank": rank,
+                    "score": float(scores[idx]),
+                }
+            )
 
-        results.append(RetrievalResult(
-            query_id=query["_id"],
-            query_text=query["text"],
-            retrieved=retrieved,
-        ))
+        results.append(
+            RetrievalResult(
+                query_id=query["_id"],
+                query_text=query["text"],
+                retrieved=retrieved,
+            )
+        )
 
     print(f"  {len(results)} résultats de retrieval générés.")
     return results, qrels, dataset_hash
@@ -156,7 +171,7 @@ if __name__ == "__main__":
     results, qrels, dataset_hash = retrieve()
 
     # Résumé rapide
-    print(f"\nRésumé :")
+    print("\nRésumé :")
     print(f"  Requêtes : {len(results)}")
     print(f"  Top-k    : {TOP_K}")
     print(f"  Hash     : {dataset_hash}")
@@ -164,5 +179,9 @@ if __name__ == "__main__":
     # Vérif basique : une requête avec son premier résultat
     r = results[0]
     print(f"\n  Exemple — query '{r.query_id}': '{r.query_text[:60]}...'")
-    print(f"    #1: doc_id={r.retrieved[0]['doc_id']}, score={r.retrieved[0]['score']:.4f}")
-    print(f"    #100: doc_id={r.retrieved[99]['doc_id']}, score={r.retrieved[99]['score']:.4f}")
+    print(
+        f"    #1: doc_id={r.retrieved[0]['doc_id']}, score={r.retrieved[0]['score']:.4f}"
+    )
+    print(
+        f"    #100: doc_id={r.retrieved[99]['doc_id']}, score={r.retrieved[99]['score']:.4f}"
+    )

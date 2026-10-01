@@ -1,0 +1,24 @@
+# Config Hydra par défaut — reproduit v1-dense à l'identique.
+# Une stratégie se déclare en dérivant ou en surchargeant ces clés, jamais en
+# modifiant le pipeline. Override CLI : `python -m rag_eval_scifact.run_campaign top_k=10`.
+
+campagne: v1-rejeu
+run_name: baseline
+
+retriever:
+  name: dense
+  model: sentence-transformers/all-MiniLM-L6-v2
+  max_seq_length: 256
+  dim: 384
+
+fusion: null
+rerank: null
+split: test
+top_k: 100
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

@@ -3,3 +3,4 @@
 # celles du dashboard. Une dépendance demandée par un ticket s'ajoute ici, une par ligne.
 # 1er octobre 2026, portage de la boucle agent-codeloop.
 -e .[dashboard]
+hydra-core

@@ -56,25 +56,31 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 |----------|-------------|
 | `python -m rag_eval_scifact.ingest` | Embedde les 5183 docs et indexe dans ChromaDB (cosinus). A faire une seule fois. Produit `chroma_data/`. |
 | `python -m rag_eval_scifact.run_eval` | Retrieval dense (300 requêtes test) + calcul des 6 métriques + artefacts (`results/*.json` + `RESULTS.md`). |
-| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR). |
+| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (Hydra). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`. |
+| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR) et des artefacts de campagne. |
 | `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
 | `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. |
 
 ## Structure
 
 ```
+conf/
+  config.yaml     # Config Hydra par défaut (reproduit v1)
 rag_eval_scifact/
-  ingest.py       # Ingestion corpus -> ChromaDB
-  retrieve.py     # Retrieval dense cosinus exact (top-100)
-  metrics.py      # Recall@k, nDCG@10, MRR (fait-main)
-  run_output.py   # Génération artefacts (JSON + RESULTS.md)
-  run_eval.py     # Orchestrateur : retrieval -> métriques -> artefacts
+  ingest.py        # Ingestion corpus -> ChromaDB
+  retrieve.py      # Retrieval dense cosinus exact (top-k paramétrable)
+  metrics.py       # Recall@k, nDCG@10, MRR (fait-main)
+  run_output.py    # Génération artefacts du run v1 historique (JSON + RESULTS.md)
+  run_eval.py      # Orchestrateur v1 : retrieval -> métriques -> artefacts
+  campaign.py      # Artefacts d'un run de campagne (JSON gzip + RESULTS.md)
+  run_campaign.py  # Point d'entrée CLI de campagne (config Hydra résolue)
 tests/
-  test_metrics.py # Tests unitaires métriques
-data/scifact/     # Données BEIR brutes (non versionnées)
-chroma_data/      # Index ChromaDB (non versionné)
-results/          # JSON détaillé par run (versionné)
-RESULTS.md        # Historique des runs (append-only, versionné)
+  test_metrics.py  # Tests unitaires métriques
+  test_campaign.py # Tests des artefacts de campagne
+data/scifact/      # Données BEIR brutes (non versionnées)
+chroma_data/       # Index ChromaDB (non versionné)
+results/           # results/v1-*.json (run v1 historique) + results/<campagne>/<run>.json.gz
+RESULTS.md         # Historique des runs (append-only, versionné)
 ```
 
 ## Conventions
