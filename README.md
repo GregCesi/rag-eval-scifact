@@ -56,8 +56,10 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 |----------|-------------|
 | `python -m rag_eval_scifact.ingest` | Embedde les 5183 docs et indexe dans ChromaDB (cosinus). A faire une seule fois. Produit `chroma_data/`. |
 | `python -m rag_eval_scifact.run_eval` | Retrieval dense (300 requêtes test) + calcul des 6 métriques + artefacts (`results/*.json` + `RESULTS.md`). |
-| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (Hydra). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`. |
-| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR) et des artefacts de campagne. |
+| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (Hydra). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`, et le run est journalisé dans MLflow (expérience = campagne). |
+| `MLFLOW_ALLOW_FILE_STORE=true mlflow ui` | Ouvre l'interface MLflow (http://127.0.0.1:5000) sur le tracking local `mlruns/`. La variable d'environnement garde le backend fichier disponible (mode maintenance depuis MLflow 3.x). |
+| `python -m rag_eval_scifact.compare_runs <run_a> <run_b>` | Compare deux runs de campagne (`.json` ou `.json.gz`) par test de randomisation apparié (nDCG@10 et MRR, codé à la main). Options : `--metric`, `--n-permutations`, `--seed`. |
+| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow et de la comparaison de runs. |
 | `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
 | `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. |
 
@@ -74,9 +76,16 @@ rag_eval_scifact/
   run_eval.py      # Orchestrateur v1 : retrieval -> métriques -> artefacts
   campaign.py      # Artefacts d'un run de campagne (JSON gzip + RESULTS.md)
   run_campaign.py  # Point d'entrée CLI de campagne (config Hydra résolue)
+  mlflow_tracking.py # Suivi MLflow d'un run de campagne (local, sans serveur)
+  stats.py         # Test de randomisation apparié (fait-main)
+  compare.py       # Charge deux runs et les compare via stats.py
+  compare_runs.py  # Point d'entrée CLI de comparaison de deux runs
 tests/
   test_metrics.py  # Tests unitaires métriques
   test_campaign.py # Tests des artefacts de campagne
+  test_mlflow_tracking.py # Tests du suivi MLflow
+  test_stats.py    # Tests du test de randomisation apparié
+  test_compare.py  # Tests de la comparaison de deux runs
 data/scifact/      # Données BEIR brutes (non versionnées)
 chroma_data/       # Index ChromaDB (non versionné)
 results/           # results/v1-*.json (run v1 historique) + results/<campagne>/<run>.json.gz

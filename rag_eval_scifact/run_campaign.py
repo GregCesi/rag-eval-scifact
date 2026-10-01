@@ -17,6 +17,7 @@ from hydra import compose, initialize
 from omegaconf import DictConfig, OmegaConf
 
 from rag_eval_scifact.campaign import run_campaign
+from rag_eval_scifact.mlflow_tracking import log_campaign_run
 from rag_eval_scifact.retrieve import retrieve
 from rag_eval_scifact.run_output import get_token_counts
 
@@ -48,6 +49,14 @@ def main(cfg: DictConfig) -> None:
         token_counts=token_counts,
     )
 
+    mlflow_run_id = log_campaign_run(
+        campagne=cfg.campagne,
+        run_name=cfg.run_name,
+        config=config,
+        metrics=outcome["metrics"],
+        json_path=outcome["json_path"],
+    )
+
     print("\n" + "=" * 60)
     print(
         f"  RUN DE CAMPAGNE — {cfg.campagne}/{cfg.run_name} — {run_date.isoformat(timespec='seconds')}"
@@ -59,6 +68,7 @@ def main(cfg: DictConfig) -> None:
     print()
     print(f"  JSON  : {outcome['json_path']}")
     print("  TABLE : RESULTS.md (ligne ajoutée)")
+    print(f"  MLflow: expérience '{cfg.campagne}', run {mlflow_run_id}")
     print("=" * 60)
     print("\n  Rappel : commiter les artefacts (run non commité = run inexistant)")
 
