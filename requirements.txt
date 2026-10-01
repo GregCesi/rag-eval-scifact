@@ -1,0 +1,5 @@
+# Dépendances d'exécution, installées par scripts/preflight.sh dans chaque worktree.
+# Le paquet lui-même, en mode éditable, avec les dépendances de pyproject.toml et
+# celles du dashboard. Une dépendance demandée par un ticket s'ajoute ici, une par ligne.
+# 1er octobre 2026, portage de la boucle agent-codeloop.
+-e .[dashboard]

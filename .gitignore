@@ -15,6 +15,7 @@ chroma_data/
 
 # Dataset (downloadable)
 data/scifact/
+data/scifact
 
 # IDE
 .idea/
@@ -36,3 +37,7 @@ mlartifacts/
 
 # Fichiers à supprimer à la main
 _to_delete/
+
+# Boucle agent-codeloop : worktrees des tours, réglages locaux
+.claude/worktrees/
+.claude/settings.local.json

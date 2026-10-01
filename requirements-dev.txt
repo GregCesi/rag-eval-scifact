@@ -1,0 +1,4 @@
+# Outils de la barre, versions figées : une version qui bouge change la barre.
+# Mêmes versions que job-search (TCK-235). 1er octobre 2026, portage de la boucle.
+ruff==0.16.9
+pytest==9.1.1

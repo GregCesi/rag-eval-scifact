@@ -1,4 +1,47 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": true,
+  "enabledPlugins": {
+    "ecc@ecc": true
+  },
+  "env": {
+    "ECC_HOOK_PROFILE": "standard",
+    "ECC_DISABLED_HOOKS": "pre:bash:dispatcher,pre:edit-write:gateguard-fact-force,stop:desktop-notify"
+  },
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Bash",
+      "Read(./**)",
+      "Edit(./**)",
+      "Skill",
+      "Task",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-query-data-sources",
+      "mcp__claude_ai_Notion__notion-update-page"
+    ],
+    "deny": [
+      "mcp__claude_ai_Notion__notion-create-pages",
+      "Bash(git push:*)",
+      "Bash(git merge:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(git -C:*)",
+      "Edit(./scripts/**)",
+      "Edit(./.claude/rules/**)",
+      "Edit(./.claude/settings.json)",
+      "Edit(./.claude/agents/**)",
+      "Edit(./.claude/skills/**)",
+      "Edit(./pyproject.toml)",
+      "Edit(./requirements-dev.txt)",
+      "Edit(./.claude/CLAUDE.md)",
+      "Edit(./rag-eval-scifact-etape2-decisions.md)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -6,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check --fix $CLAUDE_FILE_PATH && ruff format $CLAUDE_FILE_PATH",
+            "command": "R=.venv/bin/ruff; [ -x \"$R\" ] || R=ruff; \"$R\" check --fix \"$CLAUDE_FILE_PATH\" && \"$R\" format \"$CLAUDE_FILE_PATH\"",
             "if": "Edit(*.py)|Write(*.py)"
           }
         ]

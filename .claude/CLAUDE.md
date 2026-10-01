@@ -14,6 +14,16 @@ Python · ChromaDB · sentence-transformers (`all-MiniLM-L6-v2`, 384d, 256 token
 
 Labo (à installer par le socle) : Hydra (configs de stratégie) · MLflow (suivi des runs, local) · `Qwen/Qwen3-Embedding-0.6B` (modèle long contexte)
 
+## Où sont les règles
+
+- `.claude/rules/quality-gate.md` — la barre de fin de ticket, passée par `bash scripts/barre.sh`.
+- `.claude/rules/workflow.md` — le régime d'exécution dans la boucle agent-codeloop : lecture du ticket, points d'arrêt, verdict et entrée Journal.
+- Règles du projet — `methodologie.md`, `invariants.md`, `versioning.md`.
+
+Les outils ECC (skills, agents, commandes) sont des moyens. Ils ne remplacent aucune de ces règles, et une note d'évaluation ECC n'est pas un verdict.
+
+`.claude/state/` (IMPLEMENTATION_*.md, JOURNAL_error_analysis.md) est l'archive du flow précédent, gelée depuis le 1er octobre 2026 : tu ne la lis pas pour savoir quoi faire, et tu n'y écris pas. Ce que tu dois produire est dans ton ticket.
+
 ## Structure du projet
 
 Voir `.claude/docs/CODEMAP.md` pour la carte détaillée.
