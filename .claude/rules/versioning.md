@@ -9,8 +9,12 @@ paths: ["results/**", "RESULTS.md", "**/*.py"]
 
 Chaque run d'évaluation **doit** produire ET commiter :
 1. Une ligne dans `RESULTS.md` (append-only, jamais réécrire l'historique)
-2. Un fichier `results/{tag}-{date}.json` avec le détail complet du run
-3. Les deux sous le même tag git (ex. `v1-dense`)
+2. Un fichier `results/{campagne}/{run}.json.gz` avec le détail complet du run (format ci-dessous, compressé gzip)
+3. **Un tag git par campagne** (ex. `v2-grid`), posé sur le commit qui contient tous ses runs
+
+Le run v1 garde son format historique (`results/v1-dense-*.json`, non compressé, tag `v1-dense`).
+MLflow lit ces JSON comme artefacts. `mlruns/` n'est **pas** la source de vérité et n'est pas commité :
+un run présent dans MLflow mais absent de `RESULTS.md` et de `results/` n'existe pas.
 
 Un run dont les artefacts ne sont pas commités **n'existe pas**.
 Ref: `rag-eval-scifact-etape2-decisions.md:106`
@@ -19,6 +23,7 @@ Ref: `rag-eval-scifact-etape2-decisions.md:106`
 
 **Niveau run** (carte d'identité) :
 - `version` (tag git), `date`, `dataset_hash`
+- `campagne`, `run_name`, `config` (config Hydra résolue : retriever, unité/chunking, modèle, fusion, rerank, top-k)
 - Config embedding : `model`, `max_seq_length`, `dim`
 - Les 6 métriques agrégées
 

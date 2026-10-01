@@ -26,3 +26,13 @@ data/scifact/
 
 # OS
 .DS_Store
+
+# MLflow (les runs font foi dans results/ + RESULTS.md)
+mlruns/
+mlartifacts/
+
+# Historique local de l'éditeur
+.history/
+
+# Fichiers à supprimer à la main
+_to_delete/

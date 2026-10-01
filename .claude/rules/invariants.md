@@ -3,7 +3,7 @@ description: Invariants config/dataset du pipeline RAG-Eval SciFact v1
 paths: ["**/*.py", "RESULTS.md"]
 ---
 
-# Invariants config/dataset — v1
+# Invariants config/dataset
 
 Ces invariants sont des **gates** : vérifier AVANT chaque run/commit.
 
@@ -19,8 +19,9 @@ Ces invariants sont des **gates** : vérifier AVANT chaque run/commit.
   Protocole BEIR : les distracteurs font partie de la tâche. Jamais de filtrage par qrels.
   Ref: `rag-eval-scifact-etape2-decisions.md:87` (Noeud B)
 
-- [ ] **Troncature 256 tokens = dette explicite dans RESULTS.md**
+- [ ] **Troncature = dette explicite dans RESULTS.md**
   MiniLM tronque silencieusement à 256 tokens. 71 % des docs dépassent ce seuil.
   Cette troncature est ACCEPTÉE pour v1 (baseline BEIR comparable), mais doit être
   **notée explicitement comme dette** dans `RESULTS.md` à chaque run. Pas silencieuse.
+  En phase labo : chaque run note le `max_seq_length` effectif et la part de documents (ou de chunks) tronqués.
   Ref: `rag-eval-scifact-etape2-decisions.md:32-33`

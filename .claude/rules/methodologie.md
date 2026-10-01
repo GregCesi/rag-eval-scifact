@@ -12,26 +12,38 @@ Ces règles sont des **interdictions explicites**. Elles protègent l'objectif p
 - `pytrec_eval` / `pytrec-eval`
 - `beir.retrieval.evaluation`
 - `sentence_transformers.evaluation`
+- `ranx` (y compris `ranx.fuse`), `ir_measures`, `trectools`
 - toute lib qui calcule Recall/nDCG/MRR à ta place
 
 Les 6 métriques (Recall@{1,5,10,100} + nDCG@10 + MRR) doivent être **implémentées manuellement**.
+En phase labo, même règle pour la **fusion RRF** et pour le **test statistique apparié** entre deux runs : codés à la main et testés. `numpy` reste autorisé pour le calcul.
 C'est le coeur pédagogique du projet (cadrage §2.6).
 Ref: `rag-eval-scifact-etape2-decisions.md:82`
 
-## Dense-seul v1 — measure before levers
+## Leviers — par campagne, jamais par intuition
 
-v1 est **volontairement minimale** : embedding dense + cosinus, c'est tout.
+v1 (dense seul) est close et sert de référence. Depuis le 2026-10-01, les leviers pré-enregistrés
+(`rag-eval-scifact-etape2-decisions.md` §5 : BM25, fusion RRF, reranking, fenêtre longue / autre modèle,
+chunking) **entrent par une campagne**, pas un par un.
 
-**NE PAS ajouter en v1 :**
-- BM25 ou retrieval lexical
-- Fusion RRF (multi-retriever)
-- Reranking (cross-encoder ou autre)
-- LLM de génération (mode RAG complet)
-- Chunking sous-document
+**Règles d'une campagne :**
+- **Prédiction avant lancement — OBLIGATOIRE.** Avant le premier run, `results/{campagne}/PREDICTION.md`
+  est écrit et commité : levier attendu gagnant, buckets v1 qu'il doit corriger (near_miss / deep_miss /
+  miss_100), ordre de grandeur attendu sur nDCG@10. Il s'appuie sur l'error analysis v1. Pas de prédiction
+  = pas de campagne. La campagne vérifie la prédiction, elle ne la remplace pas.
+- **Un levier = une dimension de config Hydra**, jamais un comportement codé en dur dans le pipeline.
+- **Fusion** : si des poids sont optimisés, ils le sont sur le split `train`, jamais sur `test`.
+- **Chunking sous-document** : toujours suivi d'un regroupement chunk → document avant le calcul des
+  métriques (qrels au niveau document).
+- **Lecture** : avec plusieurs dizaines de runs, des écarts « significatifs » apparaissent par hasard.
+  On lit les gros écarts, pas les 0,01.
 
-Tout levier est **hors scope v1** et gated sur l'error analysis des résultats v1.
-On mesure d'abord, on améliore ensuite — jamais l'inverse.
-Ref: `rag-eval-scifact-etape2-decisions.md:90-91`
+**NE PAS ajouter dans la campagne `v2-grid` :**
+- LLM de génération (mode RAG complet), LLM-as-judge
+- réécriture de requête, HyDE
+
+Ref: décision du 2026-10-01, entrée Journal Notion « rag-eval-scifact sort de pause : le banc devient un labo
+multi-stratégies tracé dans MLflow ».
 
 ## Ollama uniquement — zéro API payante
 
@@ -42,4 +54,5 @@ Ref: `rag-eval-scifact-etape2-decisions.md:90-91`
 - Cohere, Mistral API, etc.
 
 Si un LLM est nécessaire (post-v1 : génération, LLM-as-judge), utiliser **Ollama** (local uniquement).
+Attention : les juges LLM de MLflow (`mlflow.genai`) appellent OpenAI par défaut — les configurer sur Ollama.
 Invariant transversal absolu du projet, non négociable.
