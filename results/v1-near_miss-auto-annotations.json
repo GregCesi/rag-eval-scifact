@@ -1,0 +1,202 @@
+{
+  "1": {
+    "categorie": "C-sémantique",
+    "rang_golden": 5,
+    "note": "Le golden répond au claim via les scaffolds nanométriques et leur propriété inductive, mais l'embedding dense reformule le concept au niveau de l'abstraction."
+  },
+  "3": {
+    "categorie": "T",
+    "rang_golden": 3,
+    "note": "Le passage-clé démontrant que les variants rares créent des associations significatives se trouve après le marqueur ✂."
+  },
+  "5": {
+    "categorie": "T",
+    "rang_golden": 2,
+    "note": "Le golden statue OUI sur le claim mais la truncation à 256 tokens élimine la conclusion synthétique."
+  },
+  "36": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 3,
+    "note": "Le golden parle de folic acid et réduction de homocystéine, pas de B12 deficiency."
+  },
+  "42": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 2,
+    "note": "Contradiction polaire : le claim inverse la conclusion du golden."
+  },
+  "75": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 2,
+    "note": "Document thématiquement proche mais ne statue pas sur la composition de l'uréase."
+  },
+  "94": {
+    "categorie": "T",
+    "rang_golden": 3,
+    "note": "Le golden statue OUI mais le passage mentionnant albendazole se trouve après la troncation."
+  },
+  "99": {
+    "categorie": "combo",
+    "rang_golden": 2,
+    "note": "Document PGAM1 pertinent mais n'adresse pas claim sur Alizarin. Troncature coupe avant les détails."
+  },
+  "100": {
+    "categorie": "T",
+    "rang_golden": 3,
+    "note": "Le passage-clé ('all HSCs segregate their chromosomes randomly') est après le marqueur ✂ ; l'embedding voit l'hypothèse testée mais pas la conclusion."
+  },
+  "118": {
+    "categorie": "C-lexical",
+    "rang_golden": 2,
+    "note": "Rang-1 traite la facette inverse (reconstitution protège vs C.difficile), golden traite la facette directe (antibiotique réduit la résistance)."
+  },
+  "148": {
+    "categorie": "C-sémantique",
+    "rang_golden": 2,
+    "note": "Golden contient la réponse directe (CMA decline in aged organisms) mais rang 2 ; distinction insuffisante entre autophagy générale et autophagy-en-aging."
+  },
+  "208": {
+    "categorie": "C-lexical",
+    "rang_golden": 3,
+    "note": "Acronyme CHEK2 absent des rangs 1-2 ; embedding dense échoue sur mot rare génétique ; BM25 l'aurait remonté."
+  },
+  "212": {
+    "categorie": "C-sémantique",
+    "rang_golden": 6,
+    "note": "Acronyme 'CR' non résolu en 'caloric restriction' par l'embedding dense."
+  },
+  "213": {
+    "categorie": "combo",
+    "rang_golden": 5,
+    "note": "Confusion de polarité : embedding ne distingue pas 'CRP prédit' de 'CRP ne prédit PAS' + troncature 601 tokens."
+  },
+  "238": {
+    "categorie": "combo",
+    "rang_golden": 2,
+    "note": "Gap sémantique : 'methionine restriction' doit être abstraite en 'stress' pour matcher le golden."
+  },
+  "248": {
+    "categorie": "C-sémantique",
+    "rang_golden": 3,
+    "note": "Embedding model confond 'energy expenditure générique' avec CDCA-specific BAT."
+  },
+  "249": {
+    "categorie": "C-sémantique",
+    "rang_golden": 3,
+    "note": "Le golden REFUTES le claim ('increased' vs 'reduces') mais le retriever préfère des docs sur 'energy expenditure' générique."
+  },
+  "261": {
+    "categorie": "C-sémantique",
+    "rang_golden": 7,
+    "note": "Mismatch de niveau d'abstraction : le retriever confond 'exercice augmente NO' avec 'exercice améliore la vasodilation endothélium-dépendante par NO'."
+  },
+  "275": {
+    "categorie": "T",
+    "rang_golden": 2,
+    "note": "Le passage montrant la synergie PI3K+MEK contre KRAS est tronqué après ✂ dans le golden 4961038 (rang 4)."
+  },
+  "295": {
+    "categorie": "Q-saturation",
+    "rang_golden": 3,
+    "note": "Le golden répond au claim (crosstalk DCs-ILCs) mais le corpus contient plusieurs docs similaires sur les ILCs intestinaux qui rankent plus haut."
+  },
+  "300": {
+    "categorie": "C-sémantique",
+    "rang_golden": 4,
+    "note": "Le golden parle d'IRP2 en contexte COPD/mitochondrial, pas de DMT1 ni d'uptake de fer. Gap sémantique entre mécanisme IRE-binding et pathologie pulmonaire."
+  },
+  "324": {
+    "categorie": "C-lexical",
+    "rang_golden": 2,
+    "note": "Le claim emploie 'Raptor' tandis que le golden parle de 'mTOR signalling'. Gap lexical : l'équivalence Raptor=mTORC1 n'est pas établie."
+  },
+  "338": {
+    "categorie": "T",
+    "rang_golden": 2,
+    "note": "L'évidence cruciale (dexamethasone augmente le risque de saignement, ARR 6.80) est tronquée après ✂."
+  },
+  "385": {
+    "categorie": "Q-saturation",
+    "rang_golden": 2,
+    "note": "Le golden expérimental est au rang 2 derrière une review directement sur le même sujet (EMAs + antitumor immune response)."
+  },
+  "388": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 2,
+    "note": "Le golden ne mentionne pas IBP. Trop général pour supporter le claim spécifique sur l'expression d'IBP."
+  },
+  "452": {
+    "categorie": "C-sémantique",
+    "rang_golden": 10,
+    "note": "Le dense ne capture pas la négation 'does NOT vary' ni la stochasticité. Les goldens COMPLETS sont sémantiquement éloignés dans l'espace embedding."
+  },
+  "507": {
+    "categorie": "C-lexical",
+    "rang_golden": 2,
+    "note": "Le golden ne mentionne pas 'helminths' mais décrit le mécanisme (IL-4 inhibe autophagy anti-TB). Le rang 1 combine tous les termes du claim."
+  },
+  "513": {
+    "categorie": "Q-saturation",
+    "rang_golden": 2,
+    "note": "Le golden REFUTES le claim (LOW fitness = CVD risk, pas HIGH). Le rang 1 couvre le même topic plus directement."
+  },
+  "535": {
+    "categorie": "Q-inférence",
+    "rang_golden": 4,
+    "note": "Le golden parle de glucose tolerance → hypertension, pas de type 1 diabetes spécifiquement. Inférence T1D → glucose intolerance requise."
+  },
+  "540": {
+    "categorie": "C-sémantique",
+    "rang_golden": 4,
+    "note": "Le retriever confond les régions cérébrales glutamatergiques (DRN, LHA vs VMH) dans le contexte glutamate+energy balance."
+  },
+  "551": {
+    "categorie": "Q-inférence",
+    "rang_golden": 2,
+    "note": "Le golden parle de conformational changes TCR mais n'aborde pas le rôle spécifique d'ITAM phosphorylation comme facteur de prévention."
+  },
+  "569": {
+    "categorie": "C-sémantique",
+    "rang_golden": 4,
+    "note": "Le golden contient la preuve directe ('adult tissues contain a predominance of memory T cells') mais les top-3 couvrent le domaine sans la quantification spécifique."
+  },
+  "575": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 3,
+    "note": "Le golden documente la domestication de la levure mais ne mentionne pas l'aneuploïdie chromosomique. Le claim requiert une inférence non supportée par le texte."
+  },
+  "577": {
+    "categorie": "C-sémantique",
+    "rang_golden": 8,
+    "note": "Le golden statue le claim (innate responses saturent avec la dose) mais les embeddings ne lient pas 'inoculum dose' à 'growth rate saturation of innate immunity'."
+  },
+  "598": {
+    "categorie": "Q-saturation",
+    "rang_golden": 7,
+    "note": "Top-5 captent 'cervical screening' mais pas l'impact causal sur les taux d'incidence. Golden REFUTES le claim au rang 7."
+  },
+  "628": {
+    "categorie": "C-sémantique",
+    "rang_golden": 4,
+    "note": "Le golden mentionne HTLV-I endémique en Afrique mais aussi Japan, Caribbean, Melanesia. Top-3 sont sur HIV/SIV, pas HTLV-I."
+  },
+  "637": {
+    "categorie": "Q-saturation",
+    "rang_golden": 4,
+    "note": "Termes de la query trop larges (homelessness, mental health), les reviews générales précèdent le golden spécifique."
+  },
+  "659": {
+    "categorie": "Q-inférence (gold-faible)",
+    "rang_golden": 4,
+    "note": "Le golden mentionne lymphatic filariasis comme maladie négligée mais ne nomme pas ivermectin. Lien claim→golden requiert inférence non supportée."
+  },
+  "674": {
+    "categorie": "C-sémantique",
+    "rang_golden": 7,
+    "note": "Le golden REFUTES directement ('LDL has a causal role') mais les top-5 parlent de LDL metabolism sans la relation causale CVD. Golden au rang 7."
+  },
+  "691": {
+    "categorie": "C-sémantique",
+    "rang_golden": 4,
+    "note": "Le golden montre LARG activant RhoA via Fyn (une kinase Src) dans le contexte de forces mécaniques sur les intégrines, alors que le claim porte sur une répression de RhoA par LARG en réponse à SRC — le gap est conceptuel (activation vs répression) et contextuel (mécano-transduction vs signalisation SRC directe), inaccessible par un simple swap lexical."
+  }
+}

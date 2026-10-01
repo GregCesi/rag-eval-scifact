@@ -44,11 +44,17 @@ Vérifier que le nombre de fiches produites dans `results/{bucket}_cases/` corre
 
 1. Lister les fiches `results/{bucket}_cases/query_*.md`.
 2. Diviser en vagues de 8 maximum.
-3. Pour chaque vague : lancer 8 sous-agents en parallèle avec l'outil Agent.
-   - Chaque sous-agent reçoit comme prompt :
-     a. Le contenu de la fiche markdown (lu avec Read)
-     b. Le protocole d'annotation ci-dessous (copié verbatim)
-   - Le prompt du sous-agent doit commencer par le protocole, suivi de `---\n` puis du contenu de la fiche.
+3. Pour chaque vague : lancer 8 sous-agents en parallèle avec l'outil Agent, **model: "sonnet"**.
+   - Chaque sous-agent reçoit comme prompt la concaténation de DEUX blocs, les deux VERBATIM :
+     a. Le protocole d'annotation ci-dessous (**copié VERBATIM, intégralement, sans aucune simplification**)
+     b. Suivi de `---\n` puis du **contenu COMPLET** de la fiche markdown `query_*.md` (lu avec Read, **jamais résumé**)
+   - ⛔ **INTERDIT** de résumer, condenser ou reformuler :
+     - Le **protocole** : le texte figé ci-dessous contient les définitions précises des catégories
+       (T = Troncature, pas "True") sans lesquelles le sous-agent classifie mal.
+     - La **fiche de cas** : le sous-agent a besoin du texte intégral du golden (avant ET après ✂),
+       des scores de similarité, et du texte des top-5. Sans ces éléments il ne peut pas juger
+       si le passage-clé est tronqué, ni comparer la sémantique golden vs top-k.
+   - Le prompt doit commencer par : "Tu es un annotateur d'erreurs de retrieval RAG. Ne lis AUCUN fichier, n'explore AUCUN code. Analyse UNIQUEMENT le cas ci-dessous et produis l'annotation demandée."
 4. Attendre la complétion de la vague avant de lancer la suivante.
 5. Pour chaque réponse de sous-agent : extraire le JSON `{categorie, rang_golden, note}`.
    - Si le sous-agent a enveloppé le JSON dans un bloc markdown, le nettoyer.
@@ -63,12 +69,15 @@ Vérifier que le nombre de fiches produites dans `results/{bucket}_cases/` corre
 
 ---
 
-## Protocole d'annotation (prompt sous-agent)
+## Protocole d'annotation (prompt sous-agent) — TEXTE FIGÉ
 
-Le texte ci-dessous est transmis TEL QUEL à chaque sous-agent, précédé de la fiche markdown du cas.
+⛔ Le bloc ci-dessous est un texte FIGÉ. Il DOIT être copié intégralement dans chaque prompt
+de sous-agent. Ne JAMAIS le résumer, le condenser, ni en extraire un sous-ensemble.
+Toute simplification provoque des erreurs de classification (ex: "T" interprété comme "True"
+au lieu de "Troncature").
 
 ```
-Tu es un annotateur d'erreurs de retrieval RAG. Analyse ce cas.
+Tu es un annotateur d'erreurs de retrieval RAG. Analyse ce cas. Ne lis AUCUN fichier, n'explore AUCUN code. Analyse UNIQUEMENT le cas ci-dessous et produis l'annotation demandée.
 
 ## PROTOCOLE
 ### Règle d'or : Le golden RÉPOND au claim ≠ le golden CONTIENT les mots du claim.

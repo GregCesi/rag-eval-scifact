@@ -88,20 +88,20 @@
     "note": "Sonde = relation d'inhibition TNF/IL-1 → IL-6/IL-10, pas les entités seules. Gold 5304891 contient \"IL-6\" mais parle de génétique de la production cytokinique (QTLs, SNPs), jamais de la relation d'inhibition — absente avant ET après coupe, donc pas T. Rang 1 (0.6065, anti-TNFα auto-immunité) ne bat pas le gold sur le mécanisme, juste plus riche en vocab cytokine. Balayage rangs 2-5 : rang 4 (CRP decreases IL-10) et rang 3 (IL-6 vs IL-1β/TNFα arthrite) touchent des relations inter-cytokines mais aucun ne pose exactement le claim → aucun top-5 défendable comme gold. Pas de Q. Retriever aspiré par champ lexical cytokine saturé, gold exilé par sens global génétique. Profil = jumeau de 975. Claim probablement \"refuted\" (TNF/IL-1 induisent plutôt IL-6). BM25 pourrait remonter via \"IL-6\" mais sans garantie (champ dense)."
   },
   "1": {
-    "categorie": "C",
-    "note": "Rang 5 : mauvais score : 0.2916\n\nrang-1 seulement : 0.3540\n\nLa question semble très général, tandis que les doc parle de quelque chose de specifique. \n\nDifficile à comprendre."
+    "categorie": "Q-inference",
+    "note": "Pas assez de connaissance pour savoir si le golden repond au claim. Je n'ai pas l'impression.\n\nLes top-rang n'ont pas l'air de mieux répondre au claim mais ca reste très complexe. les mots clés de la query n'existe dans aucun doc."
   },
   "3": {
-    "categorie": "Q",
-    "note": "Ok les top 3 parlent de rare variants. J'ia du mal a savoir pourquoi 3 est mieux que 1 et 2. Ils sont tous bon."
+    "categorie": "Q-saturation.",
+    "note": "ALors est-ce que le golden repond au claim oui. la meilleur partie est dans la partie tronqué mais l'essentiel est deja un peu dis dans la partie non tronqué mais de manière moins explicite. \n\nLes rang 1 et 2 repondent aussi a la query. On partirait sur un leger Q-saturation?\nPossible troncation le fait remonter mais vraiment pas sur après dans le top 5 donc ca va."
   },
   "5": {
-    "categorie": "C ( recuperation lexical manqué).",
-    "note": "Rang 1 et 2 parlent de UK. Sauf que 2 parle de PrP, tandis que rang-1 n'en parle pas. Pourquoi 1 audessis de 2 ? UN BM25 le ferait remonter ? Donc un C lexical ?"
+    "categorie": "C-semantique (C-lexical faible)",
+    "note": "Le golden repond legerement au claim. pas parfaitement il ne dis pas 1/2000 il dis bien que les UK presnente prositivité anormal PrP. \n\nLes top-rang : ne parle pas même pas de proteine. Je vais pas faire quelque chose d'approfondi mais bon golden > top rang.\n\nPourquoi le golden est pas premier. PrP present dans la query ne remonte pas assez mais ne sera pas suffisant. \nLe levier qui remonte ce golden, c'est un embedding/reranker biomédical qui sait que « abnormal prion protein prevalence in UK appendix survey » = le sujet de « 1/2000 UK abnormal PrP positivity », et idéalement une couche qui rapproche 1/2000 ↔ ~500/million."
   },
   "36": {
-    "categorie": "Q",
-    "note": "On ne parle pas de B12 dans les top et le golden. \n\nPar contre on parle de homocysteine. Aucun doc fais le lien direct entre B12 et homocysteine. Le rang-1 parle pas mal de vitamine comparé au golden.\n\nDifficile a classé soit c'est du Q, soit c'est du C parce que je ne comprend pas que le golden repond mieux que le rang-1"
+    "categorie": "Q-inference",
+    "note": "acide folique = B9 different B12 = cobalamine. Mais ils ont l'air proche\n\nLe claim repond a la question pour B9 et pas B12. Donc est-ce que le doc repond au claim selon moi il est trop proche mais parle de la mauvaise vitamine.\nCependant le top rang repond aussi a la question voir le rang 2 repond mieux que les golden. On esr sur un Q-inference voir Q-saturation."
   },
   "42": {
     "categorie": "C-lexical",

@@ -21,47 +21,44 @@ Mesurer la qualité d'un retrieval dense mono-passage (embedding cosinus) sur Sc
 - ChromaDB (store vectoriel, espace cosinus)
 - numpy (similarité cosinus exacte)
 
-## Setup
+## Quickstart
 
 ```bash
+# 1. Environnement Python
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-```
 
-Les données SciFact doivent se trouver dans `data/scifact/` (fichiers BEIR bruts : `corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`).
+# 2. Données BEIR SciFact
+mkdir -p data/scifact
+wget https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip
+unzip scifact.zip -d data/scifact_tmp
+mv data/scifact_tmp/scifact/corpus.jsonl data/scifact/
+mv data/scifact_tmp/scifact/queries.jsonl data/scifact/
+mv data/scifact_tmp/scifact/qrels data/scifact/
+rm -rf data/scifact_tmp scifact.zip
 
-## Commandes
-
-### 1. Ingestion (embedding + indexation ChromaDB)
-
-```bash
+# 3. Ingestion (embedding + indexation ChromaDB) — ~2 min
 python -m rag_eval_scifact.ingest
-```
 
-Charge les 5183 docs, les embedde avec MiniLM, et les indexe dans une collection ChromaDB en espace cosinus. A faire une seule fois (ou pour recréer la collection).
-
-Produit le dossier `chroma_data/`.
-
-### 2. Run d'évaluation complet
-
-```bash
+# 4. Run d'évaluation
 python -m rag_eval_scifact.run_eval
-```
 
-Enchaîne : retrieval dense (cosinus exact sur les 300 requêtes test) -> calcul des 6 métriques -> génération des artefacts.
-
-Produit :
-- `results/{tag}-{date}.json` (détail complet par requête)
-- Une ligne dans `RESULTS.md` (append-only)
-
-### 3. Tests
-
-```bash
+# 5. Tests
 pytest
 ```
 
-Tests unitaires des métriques (recall, nDCG, MRR).
+Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qrels/test.tsv`.
+
+## Commandes
+
+| Commande | Description |
+|----------|-------------|
+| `python -m rag_eval_scifact.ingest` | Embedde les 5183 docs et indexe dans ChromaDB (cosinus). A faire une seule fois. Produit `chroma_data/`. |
+| `python -m rag_eval_scifact.run_eval` | Retrieval dense (300 requêtes test) + calcul des 6 métriques + artefacts (`results/*.json` + `RESULTS.md`). |
+| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR). |
+| `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
+| `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. |
 
 ## Structure
 
