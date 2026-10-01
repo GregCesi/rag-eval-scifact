@@ -36,6 +36,9 @@ mlflow.db
 # Runs de vérification des tickets (campagne dev, jamais un résultat)
 results/dev/
 
+# Bookkeeping Hydra du sweeper --multirun (jamais la source de vérité d'un run)
+multirun/
+
 # Historique local de l'éditeur
 .history/
 

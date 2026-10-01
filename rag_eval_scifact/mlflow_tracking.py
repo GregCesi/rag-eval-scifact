@@ -1,10 +1,10 @@
 """Suivi MLflow d'un run de campagne, local et sans serveur distant (EXE-86).
 
-`mlruns/` n'est pas la source de vérité (.claude/rules/versioning.md) : ce
+`mlflow.db` n'est pas la source de vérité (.claude/rules/versioning.md) : ce
 module journalise dans MLflow un run déjà écrit par `campaign.run_campaign`,
-il ne le remplace pas. Le backend fichier de MLflow est en mode maintenance
-depuis la 3.x ; `MLFLOW_ALLOW_FILE_STORE` le garde disponible sans faire
-entrer une base de données que le projet n'a pas demandée.
+il ne le remplace pas. Tracking SQLite (`mlflow.db` à la racine du dépôt), pas
+le backend fichier `mlruns/` (en mode maintenance depuis MLflow 3.x) : aucune
+variable d'environnement à poser pour l'obtenir.
 """
 
 from __future__ import annotations
@@ -13,10 +13,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
 
 import mlflow
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_TRACKING_URI = f"sqlite:///{REPO_ROOT / 'mlflow.db'}"
+
+mlflow.set_tracking_uri(DEFAULT_TRACKING_URI)
 
 
 def _flatten_config(config: dict[str, Any], prefix: str = "") -> dict[str, Any]:

@@ -25,8 +25,8 @@ Aucun levier n'est désigné comme correctif à ce jour : cette répartition cad
 
 Depuis le 2026-10-01, le banc devient un labo multi-stratégies, tracé dans MLflow :
 
-- Une stratégie se déclare dans une configuration Hydra ([conf/config.yaml](conf/config.yaml)), jamais en dur dans le pipeline.
-- Chaque run est archivé dans `results/` et suivi dans MLflow (tracking local, `mlruns/`).
+- Une stratégie se déclare dans une configuration Hydra ([conf/config.yaml](conf/config.yaml)), jamais en dur dans le pipeline, et se lance par le lanceur Hydra standard (`--multirun` pour une grille).
+- Chaque run est archivé dans `results/` et suivi dans MLflow (tracking local, SQLite `mlflow.db`).
 - Deux runs se comparent par un test de randomisation apparié, codé à la main.
 - Une campagne ne se lance qu'après une prédiction écrite et commitée (`results/{campagne}/PREDICTION.md`).
 
@@ -42,9 +42,10 @@ La campagne `v2-grid` teste cinq leviers, chacun une dimension de configuration 
 
 ## Stack
 
-- Python 3.11+
+- Python 3.13 (requis par le lanceur Hydra, voir `scripts/preflight.sh`)
 - `sentence-transformers` (modèle `all-MiniLM-L6-v2`, 384d, 256 tokens)
-- ChromaDB (store vectoriel, espace cosinus)
+- ChromaDB (store vectoriel, espace cosinus) — index de `run_eval.py` (v1)
+- Hydra (déclaration de stratégie, `--multirun`) + MLflow (tracking SQLite, `mlflow.db`)
 - numpy (similarité cosinus exacte)
 
 ## Quickstart
@@ -82,8 +83,8 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 |----------|-------------|
 | `python -m rag_eval_scifact.ingest` | Embedde les 5183 docs et indexe dans ChromaDB (cosinus). A faire une seule fois. Produit `chroma_data/`. |
 | `python -m rag_eval_scifact.run_eval` | Retrieval dense (300 requêtes test) + calcul des 6 métriques + artefacts (`results/*.json` + `RESULTS.md`). |
-| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (Hydra). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`, et le run est journalisé dans MLflow (expérience = campagne). |
-| `MLFLOW_ALLOW_FILE_STORE=true mlflow ui` | Ouvre l'interface MLflow (http://127.0.0.1:5000) sur le tracking local `mlruns/`. La variable d'environnement garde le backend fichier disponible (mode maintenance depuis MLflow 3.x). |
+| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (lanceur Hydra standard). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Plusieurs stratégies en une commande : `python -m rag_eval_scifact.run_campaign --multirun top_k=10,20`. Aide et valeurs surchargeables : `--help`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`, et le run est journalisé dans MLflow (expérience = campagne). Les embeddings de documents et le classement de premier étage sont mis en cache sous `cache_dir` (défaut `~/.cache/rag-eval-scifact`) : un run identique ne recalcule ni l'un ni l'autre. |
+| `mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5001` | Ouvre l'interface MLflow (http://127.0.0.1:5001) sur le tracking SQLite local `mlflow.db`. |
 | `python -m rag_eval_scifact.compare_runs <run_a> <run_b>` | Compare deux runs de campagne (`.json` ou `.json.gz`) par test de randomisation apparié (nDCG@10 et MRR, codé à la main). Options : `--metric`, `--n-permutations`, `--seed`. |
 | `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow et de la comparaison de runs. |
 | `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
@@ -101,8 +102,9 @@ rag_eval_scifact/
   run_output.py    # Génération artefacts du run v1 historique (JSON + RESULTS.md)
   run_eval.py      # Orchestrateur v1 : retrieval -> métriques -> artefacts
   campaign.py      # Artefacts d'un run de campagne (JSON gzip + RESULTS.md)
-  run_campaign.py  # Point d'entrée CLI de campagne (config Hydra résolue)
-  mlflow_tracking.py # Suivi MLflow d'un run de campagne (local, sans serveur)
+  run_campaign.py  # Point d'entrée CLI de campagne (lanceur Hydra standard, --multirun)
+  cache.py         # Cache disque (embeddings de documents, classement de premier étage)
+  mlflow_tracking.py # Suivi MLflow d'un run de campagne (local, SQLite mlflow.db)
   stats.py         # Test de randomisation apparié (fait-main)
   compare.py       # Charge deux runs et les compare via stats.py
   compare_runs.py  # Point d'entrée CLI de comparaison de deux runs
@@ -112,6 +114,9 @@ tests/
   test_mlflow_tracking.py # Tests du suivi MLflow
   test_stats.py    # Tests du test de randomisation apparié
   test_compare.py  # Tests de la comparaison de deux runs
+  test_cache.py    # Tests du cache (embeddings, classement de premier étage)
+  test_retrieve_campaign.py # Tests du retrieval de campagne (cache embarqué)
+  test_run_campaign_cli.py  # Tests du lanceur Hydra (--help, --multirun)
 data/scifact/      # Données BEIR brutes (non versionnées)
 chroma_data/       # Index ChromaDB (non versionné)
 results/           # results/v1-*.json (run v1 historique) + results/<campagne>/<run>.json.gz

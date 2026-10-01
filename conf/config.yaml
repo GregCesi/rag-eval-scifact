@@ -2,6 +2,11 @@
 # Une stratégie se déclare en dérivant ou en surchargeant ces clés, jamais en
 # modifiant le pipeline. Override CLI : `python -m rag_eval_scifact.run_campaign top_k=10`.
 
+defaults:
+  - override hydra/job_logging: none
+  - override hydra/hydra_logging: none
+  - _self_
+
 campagne: v1-rejeu
 run_name: baseline
 
@@ -16,9 +21,19 @@ rerank: null
 split: test
 top_k: 100
 
+# Cache des calculs lourds (embeddings de documents, classement de premier étage),
+# hors du dépôt. Rangé par dataset_hash, modèle et fenêtre : changer l'un des trois
+# ne réutilise jamais l'entrée d'un autre.
+cache_dir: ~/.cache/rag-eval-scifact
+
 hydra:
   run:
     dir: .
+  # Le sweep (--multirun) garde le découpage par date/heure de Hydra, isolé sous
+  # multirun/ (gitignored) : ses artefacts de bookkeeping (multirun.yaml) ne
+  # polluent jamais la racine du dépôt. `job.chdir: false` fait que les
+  # artefacts applicatifs (results/, RESULTS.md) s'écrivent quand même depuis
+  # le cwd réel, jamais sous multirun/.
   output_subdir: null
   job:
     chdir: false

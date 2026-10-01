@@ -12,12 +12,16 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import chromadb
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
+from rag_eval_scifact.cache import get_document_embeddings, get_ranking
+from rag_eval_scifact.ingest import CORPUS_PATH, compute_dataset_hash, load_corpus
 
 # --- Constantes ---
 
@@ -79,6 +83,42 @@ def load_test_queries(
     return queries, qrels
 
 
+def _rank_top_k(
+    queries: list[dict],
+    doc_ids: list[str],
+    doc_embeddings: np.ndarray,
+    query_embeddings: np.ndarray,
+    top_k: int,
+) -> list[RetrievalResult]:
+    """Cosinus brute-force (L2-normalise puis produit scalaire) + top-k par requête."""
+    doc_norms = np.linalg.norm(doc_embeddings, axis=1, keepdims=True)
+    doc_embeddings_norm = doc_embeddings / doc_norms
+
+    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
+    query_embeddings_norm = query_embeddings / query_norms
+
+    sim_matrix = query_embeddings_norm @ doc_embeddings_norm.T
+
+    results: list[RetrievalResult] = []
+    for i, query in enumerate(queries):
+        scores = sim_matrix[i]
+        top_indices = np.argpartition(scores, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
+
+        retrieved = [
+            {"doc_id": doc_ids[idx], "rank": rank, "score": float(scores[idx])}
+            for rank, idx in enumerate(top_indices, start=1)
+        ]
+        results.append(
+            RetrievalResult(
+                query_id=query["_id"],
+                query_text=query["text"],
+                retrieved=retrieved,
+            )
+        )
+    return results
+
+
 def retrieve(
     top_k: int = TOP_K,
     model_name: str = MODEL_NAME,
@@ -125,45 +165,108 @@ def retrieve(
 
     # L2-normaliser requêtes ET docs → cosinus = dot product
     print("Calcul cosinus brute-force (numpy)...")
-    doc_norms = np.linalg.norm(doc_embeddings, axis=1, keepdims=True)
-    doc_embeddings_norm = doc_embeddings / doc_norms
-
-    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
-    query_embeddings_norm = query_embeddings / query_norms
-
-    # Matrice de similarité : (300 x 384) @ (384 x 5183) → (300 x 5183)
-    sim_matrix = query_embeddings_norm @ doc_embeddings_norm.T
-    print(f"  Matrice de similarité : {sim_matrix.shape}")
-
-    # Top-k par requête (tri décroissant)
     print(f"Extraction top-{top_k} par requête...")
-    results: list[RetrievalResult] = []
-
-    for i, query in enumerate(queries):
-        scores = sim_matrix[i]
-        # argpartition pour efficacité, puis tri des top-k
-        top_indices = np.argpartition(scores, -top_k)[-top_k:]
-        top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
-
-        retrieved = []
-        for rank, idx in enumerate(top_indices, start=1):
-            retrieved.append(
-                {
-                    "doc_id": doc_ids[idx],
-                    "rank": rank,
-                    "score": float(scores[idx]),
-                }
-            )
-
-        results.append(
-            RetrievalResult(
-                query_id=query["_id"],
-                query_text=query["text"],
-                retrieved=retrieved,
-            )
-        )
+    results = _rank_top_k(queries, doc_ids, doc_embeddings, query_embeddings, top_k)
 
     print(f"  {len(results)} résultats de retrieval générés.")
+    return results, qrels, dataset_hash
+
+
+def _default_embedder(
+    model_name: str, max_seq_length: int
+) -> Callable[[list[str]], np.ndarray]:
+    """Encode avec un `SentenceTransformer` chargé paresseusement, au plus une fois.
+
+    Une campagne de test injecte son propre embedder (fonction fabriquée) pour ne
+    jamais charger de modèle réel — voir `retrieve_campaign`.
+    """
+    model_box: dict[str, SentenceTransformer] = {}
+
+    def _embed(texts: list[str]) -> np.ndarray:
+        if "model" not in model_box:
+            model = SentenceTransformer(model_name)
+            model.max_seq_length = max_seq_length
+            model_box["model"] = model
+        embeddings = model_box["model"].encode(
+            texts, show_progress_bar=False, batch_size=64
+        )
+        return np.array(embeddings, dtype=np.float32)
+
+    return _embed
+
+
+def retrieve_campaign(
+    top_k: int,
+    model_name: str,
+    max_seq_length: int,
+    split: str,
+    cache_dir: Path,
+    embedder: Callable[[list[str]], np.ndarray] | None = None,
+    corpus_path: Path = CORPUS_PATH,
+    queries_path: Path = QUERIES_PATH,
+    qrels_path: Path = QRELS_PATH,
+) -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
+    """Retrieval dense d'un run de campagne, embeddings et classement mis en cache.
+
+    Contrairement à `retrieve()` (v1 historique, lit `chroma_data/`), ce chemin
+    embedde les documents lui-même — nécessaire pour qu'une stratégie puisse
+    changer de modèle ou de fenêtre — et met en cache les deux calculs lourds
+    (embeddings de documents, classement de premier étage) sous `cache_dir`,
+    séparé de `chroma_data/`. `embedder` est injectable pour les tests : aucun
+    modèle n'est chargé tant qu'il n'est pas fourni par l'appelant.
+    """
+    dataset_hash = compute_dataset_hash(corpus_path)
+    print(f"  dataset_hash = {dataset_hash[:30]}...")
+
+    queries, qrels = load_test_queries(queries_path, qrels_path)
+
+    embed = embedder or _default_embedder(model_name, max_seq_length)
+
+    def _compute_ranking() -> list[dict]:
+        docs = load_corpus(corpus_path)
+        doc_ids = [doc["_id"] for doc in docs]
+        doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
+
+        doc_embeddings, _ = get_document_embeddings(
+            cache_dir,
+            dataset_hash,
+            model_name,
+            max_seq_length,
+            doc_ids,
+            lambda: embed(doc_texts),
+        )
+
+        query_texts = [q["text"] for q in queries]
+        query_embeddings = embed(query_texts)
+
+        ranked = _rank_top_k(queries, doc_ids, doc_embeddings, query_embeddings, top_k)
+        return [
+            {
+                "query_id": r.query_id,
+                "query_text": r.query_text,
+                "retrieved": r.retrieved,
+            }
+            for r in ranked
+        ]
+
+    ranking, _ = get_ranking(
+        cache_dir,
+        dataset_hash,
+        model_name,
+        max_seq_length,
+        top_k,
+        split,
+        _compute_ranking,
+    )
+
+    results = [
+        RetrievalResult(
+            query_id=entry["query_id"],
+            query_text=entry["query_text"],
+            retrieved=entry["retrieved"],
+        )
+        for entry in ranking
+    ]
     return results, qrels, dataset_hash
 
 

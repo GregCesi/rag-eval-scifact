@@ -2,24 +2,32 @@
 
 Sans argument, reproduit v1 à l'identique (`conf/config.yaml`). Une stratégie se
 surcharge en ligne de commande (`top_k=10`) ou par un fichier de config dérivé,
-jamais en modifiant le pipeline.
+jamais en modifiant le pipeline. Plusieurs stratégies se lancent d'une seule
+commande avec le sweeper Hydra standard (`--multirun`, alias `-m`).
 
 Usage : python -m rag_eval_scifact.run_campaign
         python -m rag_eval_scifact.run_campaign top_k=10
+        python -m rag_eval_scifact.run_campaign --multirun top_k=10,20
+        python -m rag_eval_scifact.run_campaign --help
 """
 
 from __future__ import annotations
 
-import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
-from hydra import compose, initialize
+import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from rag_eval_scifact.campaign import run_campaign
 from rag_eval_scifact.mlflow_tracking import log_campaign_run
-from rag_eval_scifact.retrieve import retrieve
+from rag_eval_scifact.retrieve import retrieve_campaign
 from rag_eval_scifact.run_output import get_token_counts
+
+# Chemin absolu : résolu en filesystem pur par Hydra, sans dépendre de la
+# détection de module appelant (qui diffère entre `python -m` et un appel direct
+# de `_cli()`, ce second cas servant les tests du multirun — TCK/EXE-88).
+CONF_DIR = str(Path(__file__).resolve().parent.parent / "conf")
 
 
 def main(cfg: DictConfig) -> None:
@@ -27,10 +35,12 @@ def main(cfg: DictConfig) -> None:
     run_date = datetime.now(UTC)
 
     print(f"Campagne : {cfg.campagne} — run : {cfg.run_name}")
-    results, qrels, dataset_hash = retrieve(
+    results, qrels, dataset_hash = retrieve_campaign(
         top_k=cfg.top_k,
         model_name=cfg.retriever.model,
         max_seq_length=cfg.retriever.max_seq_length,
+        split=cfg.split,
+        cache_dir=cfg.cache_dir,
     )
 
     all_relevant_ids: set[str] = set()
@@ -73,13 +83,14 @@ def main(cfg: DictConfig) -> None:
     print("\n  Rappel : commiter les artefacts (run non commité = run inexistant)")
 
 
+@hydra.main(version_base=None, config_path=CONF_DIR, config_name="config")
+def _cli(cfg: DictConfig) -> None:
+    main(cfg)
+
+
 if __name__ == "__main__":
-    # hydra.main() construit son propre argparse.ArgumentParser au chargement du
-    # module ; sous Python 3.14 cette construction lève TypeError (argparse
-    # vérifie `'%' in help_string` sur un objet non-str que Hydra 1.3 lui passe).
-    # On compose la config nous-mêmes avec l'API compose() (celle que Hydra
-    # documente pour les notebooks/tests) : Hydra reste le moyen de déclarer et
-    # surcharger la config, sans passer par le CLI décoré qui plante ici.
-    with initialize(version_base=None, config_path="../conf"):
-        resolved_cfg = compose(config_name="config", overrides=sys.argv[1:])
-    main(resolved_cfg)
+    # Le venv du projet est pinné à Python 3.13 (scripts/preflight.sh) précisément
+    # pour ce lanceur : sous Python 3.14, la construction de l'argparse.ArgumentParser
+    # interne de hydra.main() lève TypeError. Sous 3.13, le CLI décoré standard
+    # fonctionne et porte --help et --multirun (sweeper Hydra standard).
+    _cli()

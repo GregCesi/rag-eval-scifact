@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from pathlib import Path
 
 import mlflow
 import pytest
 from mlflow.tracking import MlflowClient
 
+from rag_eval_scifact import mlflow_tracking
 from rag_eval_scifact.mlflow_tracking import log_campaign_run
 
 CONFIG = {
@@ -45,8 +47,8 @@ METRICS = {
 
 @pytest.fixture(autouse=True)
 def _isolate_mlflow_tracking(tmp_path):
-    """Pointe MLflow vers un dossier temporaire : jamais le mlruns/ du dépôt."""
-    mlflow.set_tracking_uri(f"file://{tmp_path / 'mlruns'}")
+    """Pointe MLflow vers un SQLite temporaire : jamais le mlflow.db du dépôt."""
+    mlflow.set_tracking_uri(f"sqlite:///{tmp_path / 'mlflow.db'}")
     yield
     mlflow.set_tracking_uri(None)
 
@@ -132,3 +134,18 @@ def test_artifact_attached_is_byte_identical_to_results_file(tmp_path):
     client = MlflowClient()
     downloaded = client.download_artifacts(run_id, json_path.name, str(tmp_path / "dl"))
     assert Path(downloaded).read_bytes() == json_path.read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# Critère 5 (EXE-88) — tracking SQLite par défaut, sans variable d'environnement
+# ---------------------------------------------------------------------------
+
+
+def test_default_tracking_uri_is_sqlite_mlflow_db_at_repo_root():
+    repo_root = Path(mlflow_tracking.__file__).resolve().parent.parent
+    expected = f"sqlite:///{repo_root / 'mlflow.db'}"
+    assert mlflow_tracking.DEFAULT_TRACKING_URI == expected
+
+
+def test_no_mlflow_allow_file_store_env_var_is_set():
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
