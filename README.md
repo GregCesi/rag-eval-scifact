@@ -1,18 +1,44 @@
 # RAG-Eval SciFact
 
-Harness d'évaluation de retrieval dense sur le dataset BEIR SciFact (5183 docs scientifiques). L'éval est le livrable : métriques fait-main, zéro lib d'éval.
+Banc d'évaluation qui compare des stratégies de retrieval sur BEIR SciFact (5183 docs scientifiques), avec des métriques codées à la main.
 
-## Résultats — baseline v1-dense (2026-07-01)
+## Résultats de référence — v1-dense (2026-07-01)
 
 | R@1 | R@5 | R@10 | R@100 | nDCG@10 | MRR |
 |-----|-----|------|-------|---------|-----|
 | 0.482 | 0.738 | 0.783 | 0.925 | 0.645 | 0.611 |
 
-Modèle all-MiniLM-L6-v2, troncature à 256 tokens (71 % des documents la dépassent). Historique complet et notes d'analyse : [RESULTS.md](RESULTS.md).
+Modèle `all-MiniLM-L6-v2`, troncature à 256 tokens (71 % des documents la dépassent). Historique complet et notes d'analyse : [RESULTS.md](RESULTS.md).
 
-## Objectif
+## Error analysis v1
 
-Mesurer la qualité d'un retrieval dense mono-passage (embedding cosinus) sur SciFact, avec 6 métriques implémentées manuellement : Recall@{1,5,10,100}, nDCG@10, MRR.
+Les 300 requêtes du split `test` se répartissent en 4 buckets (comptes de [results/v1-buckets.json](results/v1-buckets.json), relevés le 1er octobre 2026) :
+
+- **151** trouvées au rang 1
+- **87** trouvées dans le top 10, hors rang 1
+- **40** trouvées dans le top 100, hors top 10
+- **22** hors top 100
+
+Aucun levier n'est désigné comme correctif à ce jour : cette répartition cadre les prédictions de la campagne en cours, elle ne conclut rien. Fiches annotées par bucket : [results/export-annotations-v1.md](results/export-annotations-v1.md).
+
+## Labo en cours
+
+Depuis le 2026-10-01, le banc devient un labo multi-stratégies, tracé dans MLflow :
+
+- Une stratégie se déclare dans une configuration Hydra ([conf/config.yaml](conf/config.yaml)), jamais en dur dans le pipeline.
+- Chaque run est archivé dans `results/` et suivi dans MLflow (tracking local, `mlruns/`).
+- Deux runs se comparent par un test de randomisation apparié, codé à la main.
+- Une campagne ne se lance qu'après une prédiction écrite et commitée (`results/{campagne}/PREDICTION.md`).
+
+## Leviers de la première campagne
+
+La campagne `v2-grid` teste cinq leviers, chacun une dimension de configuration — **prévus, pas mesurés** : la grille n'a pas encore tourné, aucun résultat n'est à annoncer.
+
+- BM25
+- Fusion RRF
+- Reranking
+- Découpage en passages (chunking)
+- Modèle long contexte `Qwen/Qwen3-Embedding-0.6B`
 
 ## Stack
 
@@ -92,9 +118,8 @@ results/           # results/v1-*.json (run v1 historique) + results/<campagne>/
 RESULTS.md         # Historique des runs (append-only, versionné)
 ```
 
-## Conventions
+## Méthode
 
-- **Run non commité = run inexistant** : `RESULTS.md` + `results/*.json` doivent etre commités ensemble.
-- **Troncature 256 tokens** : dette acceptee pour v1 (71% des docs depassent), notee explicitement dans chaque run.
-- **Dense-seul v1** : pas de BM25, reranking, RRF, ou generation. Leviers gates sur error analysis.
-- **Ollama uniquement** : zero API payante.
+- **Éval fait-main** : métriques, fusion RRF et test statistique apparié sont codés à la main, sans lib d'évaluation (`pytrec_eval`, `beir`, `ranx`, ...). Voir [.claude/rules/methodologie.md](.claude/rules/methodologie.md).
+- **Ollama uniquement** : zéro API LLM payante, un LLM local passe par Ollama. Voir [.claude/rules/methodologie.md](.claude/rules/methodologie.md).
+- **Run non commité = run inexistant** : `RESULTS.md` + `results/{campagne}/{run}.json.gz` doivent être commités ensemble, avec un tag git par campagne. Voir [.claude/rules/versioning.md](.claude/rules/versioning.md).
