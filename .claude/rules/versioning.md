@@ -13,8 +13,13 @@ Chaque run d'évaluation **doit** produire ET commiter :
 3. **Un tag git par campagne** (ex. `v2-grid`), posé sur le commit qui contient tous ses runs
 
 Le run v1 garde son format historique (`results/v1-dense-*.json`, non compressé, tag `v1-dense`).
-MLflow lit ces JSON comme artefacts. `mlruns/` n'est **pas** la source de vérité et n'est pas commité :
-un run présent dans MLflow mais absent de `RESULTS.md` et de `results/` n'existe pas.
+MLflow lit ces JSON comme artefacts. Son stockage local (`mlflow.db`, et `mlruns/` ou `mlartifacts/`
+pour les artefacts) n'est **pas** la source de vérité et n'est pas commité : un run présent dans MLflow
+mais absent de `RESULTS.md` et de `results/` n'existe pas.
+
+**Campagne `dev` — runs de vérification d'un ticket.** Un run lancé pour vérifier un critère pendant un
+tour va dans la campagne `dev` : `results/dev/` est ignoré par git, et la ligne que ce run ajoute à
+`RESULTS.md` est retirée avant le commit. Un run `dev` n'est jamais un résultat. Décidé le 2 octobre 2026.
 
 Un run dont les artefacts ne sont pas commités **n'existe pas**.
 Ref: `rag-eval-scifact-etape2-decisions.md:106`

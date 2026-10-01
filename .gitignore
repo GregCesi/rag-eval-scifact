@@ -31,6 +31,10 @@ data/scifact
 # MLflow (les runs font foi dans results/ + RESULTS.md)
 mlruns/
 mlartifacts/
+mlflow.db
+
+# Runs de vérification des tickets (campagne dev, jamais un résultat)
+results/dev/
 
 # Historique local de l'éditeur
 .history/

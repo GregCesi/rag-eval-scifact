@@ -38,17 +38,29 @@ if [ "$ROOT" != "$PRINCIPAL" ] && [ ! -e "$ROOT/data/scifact" ]; then
   echo "PRÉ-VOL: data/scifact relié à $SOURCE"
 fi
 
+# --- Python 3.13, pas 3.14 -----------------------------------------------------
+# Décidé le 2 octobre 2026 : sous Python 3.14, hydra.main() plante (argparse refuse
+# l'aide paresseuse de Hydra 1.3) et prive le projet de --multirun, constaté au jet 1
+# (EXE-85). Un venv existant dans une autre version est refusé, jamais réutilisé.
+PYVER=3.13
 VENV="$ROOT/.venv"
+if [ -x "$VENV/bin/python" ]; then
+  vu="$("$VENV/bin/python" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+  [ "$vu" = "$PYVER" ] || {
+    echo "PRÉ-VOL: .venv est en Python $vu, le projet exige $PYVER. Supprime-le : rm -rf $VENV" >&2
+    exit 1
+  }
+fi
 if [ ! -x "$VENV/bin/python" ]; then
   echo "PRÉ-VOL: .venv absent, création."
   if command -v uv >/dev/null 2>&1; then
-    uv venv --quiet --python 3.14 "$VENV" || uv venv --quiet "$VENV"
+    uv venv --quiet --python "$PYVER" "$VENV"
   else
     PYBIN=""
-    for c in python3.14 python3.13 python3.12 python3.11 python3; do
+    for c in "python$PYVER"; do
       command -v "$c" >/dev/null 2>&1 && { PYBIN="$c"; break; }
     done
-    [ -n "$PYBIN" ] || { echo "PRÉ-VOL: aucun python3 trouvé." >&2; exit 1; }
+    [ -n "$PYBIN" ] || { echo "PRÉ-VOL: python$PYVER introuvable — installe uv (brew install uv) ou Python $PYVER." >&2; exit 1; }
     "$PYBIN" -m venv "$VENV"
   fi
 fi

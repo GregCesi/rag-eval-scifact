@@ -12,7 +12,9 @@ Phase en cours (depuis le 2026-10-01) : **labo multi-stratégies**. Première ca
 
 Python · ChromaDB · sentence-transformers (`all-MiniLM-L6-v2`, 384d, 256 tokens) · Ollama (LLM local uniquement)
 
-Labo (à installer par le socle) : Hydra (configs de stratégie) · MLflow (suivi des runs, local) · `Qwen/Qwen3-Embedding-0.6B` (modèle long contexte)
+Python **3.13** (pas 3.14 : `hydra.main()` y plante — posé par `scripts/preflight.sh`).
+
+Labo : Hydra (configs de stratégie, `conf/`) · MLflow (suivi des runs, local, stockage SQLite `mlflow.db`) · `Qwen/Qwen3-Embedding-0.6B` (modèle long contexte)
 
 ## Où sont les règles
 
