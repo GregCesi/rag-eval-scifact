@@ -91,10 +91,10 @@ def test_v2_grid_declares_the_bm25_passages_combo_no_rerank():
     assert cfg.rerank is None
 
 
-def test_v2_grid_declares_exactly_seven_combos():
+def test_v2_grid_declares_exactly_seventeen_combos():
     combos = load_grid_combos()
 
-    assert len(combos) == 7
+    assert len(combos) == 17
     assert {c["run_name"] for c in combos} == {
         "dense-minilm-256-sans-reranker",
         "dense-minilm-passages-sans-reranker",
@@ -103,6 +103,16 @@ def test_v2_grid_declares_exactly_seven_combos():
         "dense-qwen3-256-sans-reranker",
         "dense-qwen3-abstract-entier-sans-reranker",
         "dense-qwen3-passages-sans-reranker",
+        "hybrid-minilm-256-union-sans-reranker",
+        "hybrid-minilm-256-rrf-sans-reranker",
+        "hybrid-minilm-passages-union-sans-reranker",
+        "hybrid-minilm-passages-rrf-sans-reranker",
+        "hybrid-qwen3-256-union-sans-reranker",
+        "hybrid-qwen3-256-rrf-sans-reranker",
+        "hybrid-qwen3-abstract-entier-union-sans-reranker",
+        "hybrid-qwen3-abstract-entier-rrf-sans-reranker",
+        "hybrid-qwen3-passages-union-sans-reranker",
+        "hybrid-qwen3-passages-rrf-sans-reranker",
     }
 
 
@@ -158,6 +168,84 @@ def test_v2_grid_declares_the_qwen3_passages_combo_no_rerank():
     assert cfg.retriever.chunk_overlap == 32
     assert cfg.retriever.query_instruction != ""
     assert cfg.rerank is None
+
+
+# ---------------------------------------------------------------------------
+# EXE-95 critère 7 — les 10 combinaisons hybrides, sans reranker
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_the_hybrid_minilm_256_union_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(
+        c for c in combos if c["run_name"] == "hybrid-minilm-256-union-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "hybrid"
+    assert cfg.retriever.model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert cfg.retriever.unit == "document"
+    assert cfg.retriever.fusion_mode == "union"
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_hybrid_minilm_256_rrf_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(
+        c for c in combos if c["run_name"] == "hybrid-minilm-256-rrf-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "hybrid"
+    assert cfg.retriever.fusion_mode == "rrf"
+    assert cfg.retriever.rrf_k == 60
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_hybrid_minilm_passages_combos_no_rerank():
+    combos = load_grid_combos()
+    for run_name, mode in [
+        ("hybrid-minilm-passages-union-sans-reranker", "union"),
+        ("hybrid-minilm-passages-rrf-sans-reranker", "rrf"),
+    ]:
+        combo = next(c for c in combos if c["run_name"] == run_name)
+        cfg = _compose_combo(combo)
+
+        assert cfg.retriever.name == "hybrid"
+        assert cfg.retriever.unit == "passages"
+        assert cfg.retriever.chunk_size == 128
+        assert cfg.retriever.chunk_overlap == 32
+        assert cfg.retriever.fusion_mode == mode
+        assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_hybrid_qwen3_combos_no_rerank():
+    combos = load_grid_combos()
+    for run_name, unit, max_seq_length, mode in [
+        ("hybrid-qwen3-256-union-sans-reranker", "document", 256, "union"),
+        ("hybrid-qwen3-256-rrf-sans-reranker", "document", 256, "rrf"),
+        (
+            "hybrid-qwen3-abstract-entier-union-sans-reranker",
+            "document",
+            2048,
+            "union",
+        ),
+        ("hybrid-qwen3-abstract-entier-rrf-sans-reranker", "document", 2048, "rrf"),
+        ("hybrid-qwen3-passages-union-sans-reranker", "passages", 2048, "union"),
+        ("hybrid-qwen3-passages-rrf-sans-reranker", "passages", 2048, "rrf"),
+    ]:
+        combo = next(c for c in combos if c["run_name"] == run_name)
+        cfg = _compose_combo(combo)
+
+        assert cfg.retriever.name == "hybrid"
+        assert cfg.retriever.model == "Qwen/Qwen3-Embedding-0.6B"
+        assert cfg.retriever.unit == unit
+        assert cfg.retriever.max_seq_length == max_seq_length
+        assert cfg.retriever.query_instruction != ""
+        assert cfg.retriever.fusion_mode == mode
+        assert cfg.rerank is None
 
 
 # ---------------------------------------------------------------------------

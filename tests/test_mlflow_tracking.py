@@ -316,3 +316,72 @@ def test_trace_marks_absence_when_expected_doc_outside_top_100(tmp_path):
         {"doc_id": "13734012", "title": "Titre attendu absent"}
     ]
     assert span.get_attribute("best_rank_in_top_100") is None
+
+
+# ---------------------------------------------------------------------------
+# EXE-95 critère 6 — un run hybride ajoute une étape par sous-retriever,
+# avant l'étape de fusion (le span existant, classement final).
+# ---------------------------------------------------------------------------
+
+
+def test_hybrid_trace_has_one_retriever_step_per_sub_retriever(tmp_path):
+    run_id = _log_run(tmp_path)
+    fused = RetrievalResult(
+        query_id="q0",
+        query_text="claim",
+        retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.9}],
+    )
+    dense = RetrievalResult(
+        query_id="q0",
+        query_text="claim",
+        retrieved=[{"doc_id": "d2", "rank": 1, "score": 0.7}],
+    )
+    bm25 = RetrievalResult(
+        query_id="q0",
+        query_text="claim",
+        retrieved=[{"doc_id": "d1", "rank": 1, "score": 5.0}],
+    )
+    qrels = {"q0": {"d1"}}
+    titles = {"d1": "T1", "d2": "T2"}
+
+    log_query_traces(
+        run_id,
+        [fused],
+        qrels,
+        titles,
+        sub_rankings={"dense": [dense], "bm25": [bm25]},
+    )
+
+    spans = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans
+    child_names = {s.name for s in spans if s.name != "retrieve-q0"}
+    assert child_names == {"retriever-dense-q0", "retriever-bm25-q0"}
+
+    dense_span = next(s for s in spans if s.name == "retriever-dense-q0")
+    bm25_span = next(s for s in spans if s.name == "retriever-bm25-q0")
+    assert dense_span.span_type == SpanType.RETRIEVER
+    assert dense_span.outputs["retrieved_top10"][0]["doc_id"] == "d2"
+    assert bm25_span.outputs["retrieved_top10"][0]["doc_id"] == "d1"
+
+    # L'étape de fusion (span parent, déjà existante) porte toujours le
+    # classement final, inchangé par l'ajout des étapes par sous-retriever.
+    fusion_span = next(s for s in spans if s.name == "retrieve-q0")
+    assert fusion_span.outputs["retrieved_top10"][0]["doc_id"] == "d1"
+
+
+def test_non_hybrid_trace_has_no_child_retriever_step(tmp_path):
+    """Sans `sub_rankings` (run non hybride), le comportement EXE-89 est
+    inchangé : un seul span par requête."""
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id="q0",
+            query_text="claim",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.9}],
+        )
+    ]
+    qrels = {"q0": {"d1"}}
+
+    log_query_traces(run_id, results, qrels, titles={"d1": "T1"})
+
+    spans = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans
+    assert len(spans) == 1

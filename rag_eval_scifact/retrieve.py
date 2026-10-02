@@ -25,6 +25,7 @@ from sentence_transformers import SentenceTransformer
 from rag_eval_scifact.bm25 import build_bm25_index, score_queries
 from rag_eval_scifact.cache import get_document_embeddings, get_ranking
 from rag_eval_scifact.chunking import chunk_text, default_offsets_fn
+from rag_eval_scifact.fusion import CANDIDATE_POOL, rrf_fuse, union_fuse
 from rag_eval_scifact.ingest import CORPUS_PATH, compute_dataset_hash, load_corpus
 
 # --- Constantes ---
@@ -363,6 +364,8 @@ def retrieve_campaign(
     retriever_name: str = "dense",
     bm25_k1: float = 1.2,
     bm25_b: float = 0.75,
+    fusion_mode: str = "union",
+    rrf_k: int = 60,
     query_instruction: str = "",
     batch_size: int = 64,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
@@ -388,11 +391,21 @@ def retrieve_campaign(
     le retrieval se fait sur les passages puis se regroupe au niveau document
     (`grouping` : `"max"` ou `"sum"`, voir `group_passage_scores`).
 
-    `retriever_name` (EXE-93) : `"dense"` (défaut) ou `"bm25"` — lexical,
+    `retriever_name` (EXE-93) : `"dense"` (défaut), `"bm25"` — lexical,
     scores calculés par `rag_eval_scifact.bm25` (`bm25_k1`, `bm25_b`), jamais
     mis en cache (indexation rapide, aucun modèle chargé). Sur `unit`
     `"passages"`, BM25 réutilise le même découpage (`chunk_text`) et le même
     regroupement (`group_passage_scores`) que le dense.
+
+    `"hybrid"` (EXE-95) : combine un classement dense et un classement BM25
+    sur la même `unit`, en rappelant cette même fonction pour chaque
+    sous-retriever (donc avec sa mise en cache, dense comme BM25, inchangée).
+    `fusion_mode` : `"union"` (défaut, alternance simple, fonction pure
+    `rag_eval_scifact.fusion.union_fuse`) ou `"rrf"` (Reciprocal Rank Fusion,
+    `rag_eval_scifact.fusion.rrf_fuse`, paramètre `rrf_k`). Les classements
+    intermédiaires (dense, BM25) se retrouvent dans `stats["sub_rankings"]`,
+    pour les étapes de trace MLflow par sous-retriever (EXE-89 critère
+    étendu) ; absent pour les autres `retriever_name`.
 
     En plus du triplet historique, retourne un dict `stats` (EXE-90, EXE-92) :
     - `truncated_pct` : part des documents (unité document) ou des passages
@@ -423,7 +436,91 @@ def retrieve_campaign(
     timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
     stats: dict[str, float] = {}
 
-    if retriever_name == "bm25":
+    if retriever_name == "hybrid":
+        # Borné à la taille du corpus : un corpus fabriqué (tests) plus petit
+        # que CANDIDATE_POOL ne doit jamais faire échouer le partitionnement
+        # top-k des sous-retrievers.
+        sub_top_k = min(CANDIDATE_POOL, len(doc_ids))
+        dense_results, _, _, dense_stats = retrieve_campaign(
+            top_k=sub_top_k,
+            model_name=model_name,
+            max_seq_length=max_seq_length,
+            split=split,
+            cache_dir=cache_dir,
+            unit=unit,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            grouping=grouping,
+            grouping_top_n=grouping_top_n,
+            retriever_name="dense",
+            query_instruction=query_instruction,
+            batch_size=batch_size,
+            embedder=embedder,
+            token_counter=token_counter,
+            offsets_fn=offsets_fn,
+            corpus_path=corpus_path,
+            queries_path=queries_path,
+            qrels_path=qrels_path,
+        )
+        bm25_results, _, _, bm25_stats = retrieve_campaign(
+            top_k=sub_top_k,
+            model_name=model_name,
+            max_seq_length=max_seq_length,
+            split=split,
+            cache_dir=cache_dir,
+            unit=unit,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            grouping=grouping,
+            grouping_top_n=grouping_top_n,
+            retriever_name="bm25",
+            bm25_k1=bm25_k1,
+            bm25_b=bm25_b,
+            offsets_fn=offsets_fn,
+            corpus_path=corpus_path,
+            queries_path=queries_path,
+            qrels_path=qrels_path,
+        )
+
+        stats["device"] = dense_stats.get("device", "cpu")
+        stats["truncated_pct"] = dense_stats.get("truncated_pct", 0.0)
+        if "n_passages" in dense_stats:
+            stats["n_passages"] = dense_stats["n_passages"]
+        timings["indexing_duration_seconds"] = dense_stats.get(
+            "indexing_duration_seconds", 0.0
+        ) + bm25_stats.get("indexing_duration_seconds", 0.0)
+        dense_retrieval_seconds = (
+            dense_stats.get("avg_retrieval_latency_ms", 0.0) * len(queries) / 1000
+        )
+        bm25_retrieval_seconds = (
+            bm25_stats.get("avg_retrieval_latency_ms", 0.0) * len(queries) / 1000
+        )
+
+        fuse = rrf_fuse if fusion_mode == "rrf" else union_fuse
+        fuse_kwargs = {"k": rrf_k} if fusion_mode == "rrf" else {}
+        dense_by_query = {r.query_id: r for r in dense_results}
+        bm25_by_query = {r.query_id: r for r in bm25_results}
+
+        fusion_start = time.perf_counter()
+        ranking = []
+        for query in queries:
+            dense_retrieved = dense_by_query[query["_id"]].retrieved
+            bm25_retrieved = bm25_by_query[query["_id"]].retrieved
+            fused = fuse(dense_retrieved, bm25_retrieved, top_k=top_k, **fuse_kwargs)
+            ranking.append(
+                {
+                    "query_id": query["_id"],
+                    "query_text": query["text"],
+                    "retrieved": fused,
+                }
+            )
+        timings["retrieval_duration_seconds"] = (
+            dense_retrieval_seconds
+            + bm25_retrieval_seconds
+            + (time.perf_counter() - fusion_start)
+        )
+        stats["sub_rankings"] = {"dense": dense_results, "bm25": bm25_results}
+    elif retriever_name == "bm25":
         query_texts = [q["text"] for q in queries]
         stats["device"] = "cpu"
 

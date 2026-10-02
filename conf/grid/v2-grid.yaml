@@ -61,3 +61,104 @@ runs:
       - retriever.batch_size=8
       - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
       - rerank=null
+  # Hybride dense + BM25 (EXE-95) : les 5 variantes denses ci-dessus,
+  # combinées à BM25 sur la même unité, en union puis en RRF, sans reranker.
+  - run_name: hybrid-minilm-256-union-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - retriever.fusion_mode=union
+      - rerank=null
+  - run_name: hybrid-minilm-256-rrf-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - retriever.fusion_mode=rrf
+      - retriever.rrf_k=60
+      - rerank=null
+  - run_name: hybrid-minilm-passages-union-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.fusion_mode=union
+      - rerank=null
+  - run_name: hybrid-minilm-passages-rrf-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.fusion_mode=rrf
+      - retriever.rrf_k=60
+      - rerank=null
+  - run_name: hybrid-qwen3-256-union-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=256
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=union
+      - rerank=null
+  - run_name: hybrid-qwen3-256-rrf-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=256
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=rrf
+      - retriever.rrf_k=60
+      - rerank=null
+  - run_name: hybrid-qwen3-abstract-entier-union-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=union
+      - rerank=null
+  - run_name: hybrid-qwen3-abstract-entier-rrf-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=rrf
+      - retriever.rrf_k=60
+      - rerank=null
+  - run_name: hybrid-qwen3-passages-union-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=union
+      - rerank=null
+  - run_name: hybrid-qwen3-passages-rrf-sans-reranker
+    overrides:
+      - retriever.name=hybrid
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - retriever.fusion_mode=rrf
+      - retriever.rrf_k=60
+      - rerank=null

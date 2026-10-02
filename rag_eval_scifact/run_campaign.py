@@ -50,6 +50,8 @@ def main(cfg: DictConfig) -> None:
         retriever_name=cfg.retriever.name,
         bm25_k1=cfg.retriever.bm25_k1,
         bm25_b=cfg.retriever.bm25_b,
+        fusion_mode=cfg.retriever.fusion_mode,
+        rrf_k=cfg.retriever.rrf_k,
         query_instruction=cfg.retriever.query_instruction,
         batch_size=cfg.retriever.batch_size,
     )
@@ -89,7 +91,11 @@ def main(cfg: DictConfig) -> None:
     if cfg.tracing:
         titles = {doc["_id"]: doc["title"] for doc in load_corpus(CORPUS_PATH)}
         log_query_traces(
-            run_id=mlflow_run_id, results=results, qrels=qrels, titles=titles
+            run_id=mlflow_run_id,
+            results=results,
+            qrels=qrels,
+            titles=titles,
+            sub_rankings=stats.get("sub_rankings"),
         )
         n_traces = len(results)
 

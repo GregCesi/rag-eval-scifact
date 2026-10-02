@@ -78,11 +78,24 @@ def log_campaign_run(
         return run.info.run_id
 
 
+def _top10_payload(retrieved: list[dict], titles: dict[str, str]) -> list[dict]:
+    return [
+        {
+            "doc_id": d["doc_id"],
+            "title": titles.get(d["doc_id"], ""),
+            "rank": d["rank"],
+            "score": d["score"],
+        }
+        for d in retrieved[:10]
+    ]
+
+
 def log_query_traces(
     run_id: str,
     results: list[RetrievalResult],
     qrels: dict[str, set[str]],
     titles: dict[str, str],
+    sub_rankings: dict[str, list[RetrievalResult]] | None = None,
 ) -> None:
     """Journalise une trace MLflow par requête, rattachée à `run_id` (EXE-89).
 
@@ -91,7 +104,19 @@ def log_query_traces(
     sont exportées par MLflow de façon asynchrone ; `flush_all_batch_processors`
     les rend visibles en recherche avant la fin de cet appel, sans attendre la
     sortie du process (nécessaire aux tests comme à la lecture immédiate du run_id).
+
+    `sub_rankings` (EXE-95 critère 6) : classements intermédiaires d'un run
+    hybride, par nom de sous-retriever (`"dense"`, `"bm25"`). Chacun devient
+    une étape enfant de la trace (ses 10 premiers documents), avant l'étape de
+    fusion — le span existant ci-dessous, qui porte déjà le classement final.
+    `None` (défaut, run non hybride) : aucune étape enfant, comportement
+    inchangé.
     """
+    sub_rankings_by_query: dict[str, dict[str, RetrievalResult]] = {}
+    for name, ranking in (sub_rankings or {}).items():
+        for r in ranking:
+            sub_rankings_by_query.setdefault(r.query_id, {})[name] = r
+
     for r in results:
         relevant_ids = qrels.get(r.query_id, set())
         retrieved_ids = [d["doc_id"] for d in r.retrieved]
@@ -102,19 +127,21 @@ def log_query_traces(
             run_id=run_id,
         ) as span:
             span.set_inputs({"query_id": r.query_id, "query_text": r.query_text})
-            span.set_outputs(
-                {
-                    "retrieved_top10": [
+
+            for name, sub_result in sub_rankings_by_query.get(r.query_id, {}).items():
+                with mlflow.start_span(
+                    name=f"retriever-{name}-{r.query_id}",
+                    span_type=SpanType.RETRIEVER,
+                ) as sub_span:
+                    sub_span.set_outputs(
                         {
-                            "doc_id": d["doc_id"],
-                            "title": titles.get(d["doc_id"], ""),
-                            "rank": d["rank"],
-                            "score": d["score"],
+                            "retrieved_top10": _top10_payload(
+                                sub_result.retrieved, titles
+                            )
                         }
-                        for d in r.retrieved[:10]
-                    ]
-                }
-            )
+                    )
+
+            span.set_outputs({"retrieved_top10": _top10_payload(r.retrieved, titles)})
             span.set_attributes(
                 {
                     "expected_docs": [

@@ -28,6 +28,11 @@ retriever:
   # Elasticsearch (choix du chat, H2).
   bm25_k1: 1.2
   bm25_b: 0.75
+  # Hybride dense + BM25 (EXE-95), actifs seulement si retriever.name=hybrid.
+  # fusion_mode : "union" (alternance simple) ou "rrf" (Reciprocal Rank
+  # Fusion). rrf_k : constante k du RRF (défaut usuel de la littérature, H2).
+  fusion_mode: union
+  rrf_k: 60
   # Instruction préfixée aux requêtes avant encodage (EXE-94 critère 2) ; jamais
   # aux documents. Chaîne vide (défaut, MiniLM) : aucun préfixe, v1 inchangé.
   query_instruction: ""

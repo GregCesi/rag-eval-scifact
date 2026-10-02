@@ -93,6 +93,35 @@ def test_batch_size_is_overridable():
     assert cfg.retriever.batch_size == 8
 
 
+# ---------------------------------------------------------------------------
+# EXE-95 critère 1 — hybride sélectionnable, méthode et k RRF configurables
+# ---------------------------------------------------------------------------
+
+
+def test_hybrid_defaults_select_union_with_k_60():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.retriever.fusion_mode == "union"
+    assert cfg.retriever.rrf_k == 60
+
+
+def test_hybrid_is_selectable_and_its_fusion_mode_is_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(
+            config_name="config",
+            overrides=[
+                "retriever.name=hybrid",
+                "retriever.fusion_mode=rrf",
+                "retriever.rrf_k=30",
+            ],
+        )
+
+    assert cfg.retriever.name == "hybrid"
+    assert cfg.retriever.fusion_mode == "rrf"
+    assert cfg.retriever.rrf_k == 30
+
+
 def test_qwen_model_and_query_instruction_are_overridable():
     with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
         cfg = compose(

@@ -705,6 +705,202 @@ def test_changing_bm25_k1_changes_the_results(tmp_path):
     ]
 
 
+# ---------------------------------------------------------------------------
+# EXE-95 — retriever_name="hybrid" : combine dense et BM25 (union ou RRF)
+# ---------------------------------------------------------------------------
+
+
+def _hybrid_corpus(tmp_path):
+    """Corpus de 3 docs où le dense et BM25 classent dans un ordre opposé.
+
+    Un 3e document ("bird") évite que le terme "cat" apparaisse dans
+    exactement la moitié du corpus — ce qui annulerait son idf BM25 (df = N/2
+    -> idf = 0) et rendrait le classement lexical indéterminé.
+    """
+    corpus_path = tmp_path / "corpus.jsonl"
+    queries_path = tmp_path / "queries.jsonl"
+    qrels_path = tmp_path / "qrels.tsv"
+
+    corpus_path.write_text(
+        "\n".join(
+            json.dumps(doc)
+            for doc in [
+                {"_id": "d1", "title": "", "text": "cat cat cat cat cat"},
+                {"_id": "d2", "title": "", "text": "dog dog dog dog dog"},
+                {"_id": "d3", "title": "", "text": "bird bird bird"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(json.dumps({"_id": "q1", "text": "cat"}), encoding="utf-8")
+    qrels_path.write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n", encoding="utf-8")
+    return corpus_path, queries_path, qrels_path
+
+
+def _dense_favors_d2_embedder():
+    """Vecteur de requête aligné avec d2 : le dense classe d2 avant d1, alors
+    que BM25 (terme littéral "cat") classe d1 avant d2 — les deux sens
+    opposés, pour prouver que la fusion combine vraiment les deux classements."""
+    vectors = {
+        " cat cat cat cat cat": [0.0, 1.0],
+        " dog dog dog dog dog": [1.0, 0.0],
+        " bird bird bird": [0.1, 0.1],
+        "cat": [1.0, 0.0],
+    }
+
+    def _embed(texts: list[str]) -> np.ndarray:
+        return np.array([vectors[t] for t in texts], dtype=np.float32)
+
+    return _embed
+
+
+def test_hybrid_union_alternates_dense_and_bm25_rankings(tmp_path):
+    corpus_path, queries_path, qrels_path = _hybrid_corpus(tmp_path)
+
+    results, _, _, _ = retrieve_campaign(
+        top_k=10,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        fusion_mode="union",
+        embedder=_dense_favors_d2_embedder(),
+        token_counter=_fake_token_counter(),
+        corpus_path=corpus_path,
+        queries_path=queries_path,
+        qrels_path=qrels_path,
+    )
+
+    # Dense classe d2 avant d1 (vecteur de requête aligné sur d2) ; BM25
+    # classe d1 en tête (terme "cat" littéral). L'union alterne 1er dense
+    # (d2), 1er BM25 (d1), 2e dense (d3) ; le reste est déjà vu.
+    assert [d["doc_id"] for d in results[0].retrieved] == ["d2", "d1", "d3"]
+
+
+def test_hybrid_sub_rankings_are_exposed_for_tracing(tmp_path):
+    corpus_path, queries_path, qrels_path = _hybrid_corpus(tmp_path)
+
+    _, _, _, stats = retrieve_campaign(
+        top_k=10,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        embedder=_dense_favors_d2_embedder(),
+        token_counter=_fake_token_counter(),
+        corpus_path=corpus_path,
+        queries_path=queries_path,
+        qrels_path=qrels_path,
+    )
+
+    assert set(stats["sub_rankings"]) == {"dense", "bm25"}
+    dense_ranking = stats["sub_rankings"]["dense"]
+    bm25_ranking = stats["sub_rankings"]["bm25"]
+    assert dense_ranking[0].retrieved[0]["doc_id"] == "d2"
+    assert bm25_ranking[0].retrieved[0]["doc_id"] == "d1"
+
+
+def test_hybrid_reuses_the_dense_cache_on_a_second_run(tmp_path):
+    first_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        embedder=_fake_embedder(first_calls),
+        token_counter=_fake_token_counter(),
+    )
+
+    second_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        embedder=_fake_embedder(second_calls),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert len(first_calls) == 2  # un appel docs, un appel requêtes (dense)
+    assert second_calls == []  # cache du sous-retriever dense réutilisé
+
+
+def test_hybrid_dispatches_to_union_fuse_by_default(tmp_path, monkeypatch):
+    calls: list[str] = []
+    original = retrieve_module.union_fuse
+    monkeypatch.setattr(
+        retrieve_module,
+        "union_fuse",
+        lambda *a, **kw: (calls.append("union"), original(*a, **kw))[1],
+    )
+
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        embedder=_fake_embedder([]),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert calls and all(c == "union" for c in calls)
+
+
+def test_hybrid_rrf_mode_dispatches_to_rrf_fuse(tmp_path, monkeypatch):
+    calls: list[str] = []
+    original = retrieve_module.rrf_fuse
+    monkeypatch.setattr(
+        retrieve_module,
+        "rrf_fuse",
+        lambda *a, **kw: (calls.append("rrf"), original(*a, **kw))[1],
+    )
+
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        fusion_mode="rrf",
+        rrf_k=30,
+        embedder=_fake_embedder([]),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert calls and all(c == "rrf" for c in calls)
+
+
+def test_hybrid_works_on_the_passages_unit(tmp_path):
+    results, _, _, stats = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=PASSAGES_WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="hybrid",
+        unit="passages",
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        embedder=_fake_embedder([]),
+        offsets_fn=_char_offsets_fn(),
+    )
+
+    for r in results:
+        doc_ids = [d["doc_id"] for d in r.retrieved]
+        assert len(doc_ids) <= TOP_K
+        assert len(doc_ids) == len(set(doc_ids))
+    assert "n_passages" in stats
+
+
 def test_indexing_duration_is_zero_when_ranking_cache_serves(tmp_path):
     retrieve_campaign(
         top_k=TOP_K,
