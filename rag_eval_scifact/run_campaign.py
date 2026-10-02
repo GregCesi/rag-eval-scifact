@@ -36,7 +36,7 @@ def main(cfg: DictConfig) -> None:
     run_date = datetime.now(UTC)
 
     print(f"Campagne : {cfg.campagne} — run : {cfg.run_name}")
-    results, qrels, dataset_hash = retrieve_campaign(
+    results, qrels, dataset_hash, stats = retrieve_campaign(
         top_k=cfg.top_k,
         model_name=cfg.retriever.model,
         max_seq_length=cfg.retriever.max_seq_length,
@@ -58,6 +58,9 @@ def main(cfg: DictConfig) -> None:
         dataset_hash=dataset_hash,
         run_date=run_date,
         token_counts=token_counts,
+        truncated_pct=stats["truncated_pct"],
+        avg_retrieval_latency_ms=stats["avg_retrieval_latency_ms"],
+        indexing_duration_seconds=stats["indexing_duration_seconds"],
     )
 
     mlflow_run_id = log_campaign_run(
@@ -66,6 +69,7 @@ def main(cfg: DictConfig) -> None:
         config=config,
         metrics=outcome["metrics"],
         json_path=outcome["json_path"],
+        extended_metrics=outcome["extended_metrics"],
     )
 
     n_traces = 0

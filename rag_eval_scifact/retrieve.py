@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import csv
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import chromadb
 import numpy as np
@@ -172,6 +174,33 @@ def retrieve(
     return results, qrels, dataset_hash
 
 
+def compute_truncated_pct(token_counts: list[int], max_seq_length: int) -> float:
+    """Part (en pourcentage) des documents dont le comptage dépasse la fenêtre."""
+    if not token_counts:
+        return 0.0
+    truncated = sum(1 for tc in token_counts if tc > max_seq_length)
+    return 100.0 * truncated / len(token_counts)
+
+
+def _default_token_counter(model_name: str) -> Callable[[list[str]], list[int]]:
+    """Compte les tokens avec le tokenizer du modèle, chargé paresseusement, au plus une fois.
+
+    Une campagne de test injecte son propre compteur (fonction fabriquée) pour ne
+    jamais charger de tokenizer réel — voir `retrieve_campaign`.
+    """
+    tokenizer_box: dict[str, Any] = {}
+
+    def _count(texts: list[str]) -> list[int]:
+        if "tokenizer" not in tokenizer_box:
+            from transformers import AutoTokenizer
+
+            tokenizer_box["tokenizer"] = AutoTokenizer.from_pretrained(model_name)
+        tokenizer = tokenizer_box["tokenizer"]
+        return [len(tokenizer.encode(t, add_special_tokens=True)) for t in texts]
+
+    return _count
+
+
 def _default_embedder(
     model_name: str, max_seq_length: int
 ) -> Callable[[list[str]], np.ndarray]:
@@ -202,30 +231,51 @@ def retrieve_campaign(
     split: str,
     cache_dir: Path,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
+    token_counter: Callable[[list[str]], list[int]] | None = None,
     corpus_path: Path = CORPUS_PATH,
     queries_path: Path = QUERIES_PATH,
     qrels_path: Path = QRELS_PATH,
-) -> tuple[list[RetrievalResult], dict[str, set[str]], str]:
+) -> tuple[list[RetrievalResult], dict[str, set[str]], str, dict[str, float]]:
     """Retrieval dense d'un run de campagne, embeddings et classement mis en cache.
 
     Contrairement à `retrieve()` (v1 historique, lit `chroma_data/`), ce chemin
     embedde les documents lui-même — nécessaire pour qu'une stratégie puisse
     changer de modèle ou de fenêtre — et met en cache les deux calculs lourds
     (embeddings de documents, classement de premier étage) sous `cache_dir`,
-    séparé de `chroma_data/`. `embedder` est injectable pour les tests : aucun
-    modèle n'est chargé tant qu'il n'est pas fourni par l'appelant.
+    séparé de `chroma_data/`. `embedder` et `token_counter` sont injectables pour
+    les tests : aucun modèle ni tokenizer n'est chargé tant qu'ils ne sont pas
+    fournis par l'appelant.
+
+    En plus du triplet historique, retourne un dict `stats` (EXE-90) :
+    - `truncated_pct` : part des documents dont le comptage dépasse la fenêtre,
+      recalculée à chaque run (pas un calcul mis en cache).
+    - `indexing_duration_seconds` : durée de l'embedding des documents, 0.0
+      quand le cache (embeddings ou classement) a servi.
+    - `avg_retrieval_latency_ms` : latence moyenne par requête de l'étape
+      d'embedding des requêtes + classement, 0.0 quand le classement vient du cache.
     """
     dataset_hash = compute_dataset_hash(corpus_path)
     print(f"  dataset_hash = {dataset_hash[:30]}...")
 
     queries, qrels = load_test_queries(queries_path, qrels_path)
 
+    docs = load_corpus(corpus_path)
+    doc_ids = [doc["_id"] for doc in docs]
+    doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
+
+    count_tokens = token_counter or _default_token_counter(model_name)
+    truncated_pct = compute_truncated_pct(count_tokens(doc_texts), max_seq_length)
+
     embed = embedder or _default_embedder(model_name, max_seq_length)
 
+    timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
+
     def _compute_ranking() -> list[dict]:
-        docs = load_corpus(corpus_path)
-        doc_ids = [doc["_id"] for doc in docs]
-        doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
+        def _timed_embed_docs() -> np.ndarray:
+            start = time.perf_counter()
+            vectors = embed(doc_texts)
+            timings["indexing_duration_seconds"] = time.perf_counter() - start
+            return vectors
 
         doc_embeddings, _ = get_document_embeddings(
             cache_dir,
@@ -233,13 +283,15 @@ def retrieve_campaign(
             model_name,
             max_seq_length,
             doc_ids,
-            lambda: embed(doc_texts),
+            _timed_embed_docs,
         )
 
+        retrieval_start = time.perf_counter()
         query_texts = [q["text"] for q in queries]
         query_embeddings = embed(query_texts)
-
         ranked = _rank_top_k(queries, doc_ids, doc_embeddings, query_embeddings, top_k)
+        timings["retrieval_duration_seconds"] = time.perf_counter() - retrieval_start
+
         return [
             {
                 "query_id": r.query_id,
@@ -267,7 +319,16 @@ def retrieve_campaign(
         )
         for entry in ranking
     ]
-    return results, qrels, dataset_hash
+
+    avg_retrieval_latency_ms = (
+        timings["retrieval_duration_seconds"] * 1000 / len(queries) if queries else 0.0
+    )
+    stats = {
+        "truncated_pct": truncated_pct,
+        "avg_retrieval_latency_ms": avg_retrieval_latency_ms,
+        "indexing_duration_seconds": timings["indexing_duration_seconds"],
+    }
+    return results, qrels, dataset_hash, stats
 
 
 if __name__ == "__main__":

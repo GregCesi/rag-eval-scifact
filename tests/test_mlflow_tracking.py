@@ -139,6 +139,46 @@ def test_artifact_attached_is_byte_identical_to_results_file(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# EXE-90 — extended_metrics (bucket v1, part tronquée, latence, indexation)
+# journalisées comme métriques MLflow en plus des 6 historiques
+# ---------------------------------------------------------------------------
+
+
+def test_extended_metrics_are_logged_alongside_the_six_metrics(tmp_path):
+    json_path = _write_artifact(tmp_path)
+    extended_metrics = {
+        "bucket_found_at_10_perfect": 1.0,
+        "bucket_found_at_10_near_miss": 1.0,
+        "bucket_found_at_10_deep_miss": 0.0,
+        "bucket_found_at_10_miss_100": 0.0,
+        "truncated_pct": 71.0,
+        "avg_retrieval_latency_ms": 12.5,
+        "indexing_duration_seconds": 3.2,
+    }
+
+    run_id = log_campaign_run(
+        "campagne-test", "run-1", CONFIG, METRICS, json_path, extended_metrics
+    )
+
+    mlflow_metrics = MlflowClient().get_run(run_id).data.metrics
+    assert mlflow_metrics["bucket_found_at_10_perfect"] == pytest.approx(1.0)
+    assert mlflow_metrics["truncated_pct"] == pytest.approx(71.0)
+    assert mlflow_metrics["avg_retrieval_latency_ms"] == pytest.approx(12.5)
+    assert mlflow_metrics["indexing_duration_seconds"] == pytest.approx(3.2)
+    for name, value in METRICS.items():
+        assert mlflow_metrics[name.replace("@", "_at_")] == pytest.approx(value)
+
+
+def test_extended_metrics_default_to_none_keeps_only_the_six_metrics(tmp_path):
+    json_path = _write_artifact(tmp_path)
+
+    run_id = log_campaign_run("campagne-test", "run-1", CONFIG, METRICS, json_path)
+
+    mlflow_metrics = MlflowClient().get_run(run_id).data.metrics
+    assert len(mlflow_metrics) == len(METRICS)
+
+
+# ---------------------------------------------------------------------------
 # Critère 5 (EXE-88) — tracking SQLite par défaut, sans variable d'environnement
 # ---------------------------------------------------------------------------
 

@@ -51,18 +51,24 @@ def log_campaign_run(
     config: dict[str, Any],
     metrics: dict[str, float],
     json_path: Path,
+    extended_metrics: dict[str, float] | None = None,
 ) -> str:
     """Journalise un run de campagne déjà écrit sur disque. Retourne le run_id MLflow.
 
     L'URI de tracking suit la configuration ambiante de mlflow
     (`mlflow.set_tracking_uri` ou `MLFLOW_TRACKING_URI`) ; par défaut, MLflow
     écrit sous `./mlruns`, local et sans serveur.
+
+    `extended_metrics` (EXE-90 : bucket v1, part tronquée, latence, durée
+    d'indexation) se journalise en plus des 6 métriques historiques, jamais à
+    leur place.
     """
     mlflow.set_experiment(campagne)
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_params(_flatten_config(config))
+        all_metrics = {**metrics, **(extended_metrics or {})}
         mlflow.log_metrics(
-            {_sanitize_metric_name(name): value for name, value in metrics.items()}
+            {_sanitize_metric_name(name): value for name, value in all_metrics.items()}
         )
         mlflow.log_artifact(str(json_path))
         return run.info.run_id

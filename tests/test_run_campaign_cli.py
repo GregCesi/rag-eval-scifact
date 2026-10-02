@@ -38,9 +38,12 @@ def test_help_shows_hydra_help_with_overridable_config():
 
 @pytest.fixture
 def _isolated_cli(tmp_path, monkeypatch):
-    """Isole RESULTS_DIR/RESULTS_MD et le tracking MLflow dans tmp_path."""
+    """Isole RESULTS_DIR/RESULTS_MD, V1_BUCKETS_PATH et le tracking MLflow dans tmp_path."""
     monkeypatch.setattr(campaign, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(campaign, "RESULTS_MD", tmp_path / "RESULTS.md")
+    buckets_path = tmp_path / "v1-buckets.json"
+    buckets_path.write_text('{"counts": {}, "queries": {}}', encoding="utf-8")
+    monkeypatch.setattr(campaign, "V1_BUCKETS_PATH", buckets_path)
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path / 'mlflow.db'}")
     yield tmp_path
     mlflow.set_tracking_uri(None)
@@ -55,7 +58,12 @@ def _fake_retrieve_campaign(**kwargs):
         )
     ]
     qrels = {"q1": {"d1"}}
-    return results, qrels, "sha256:fake"
+    stats = {
+        "truncated_pct": 0.0,
+        "avg_retrieval_latency_ms": 0.0,
+        "indexing_duration_seconds": 0.0,
+    }
+    return results, qrels, "sha256:fake", stats
 
 
 def test_multirun_produces_two_runs_two_files_two_mlflow_runs(

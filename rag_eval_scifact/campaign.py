@@ -21,6 +21,8 @@ from rag_eval_scifact.run_output import compute_per_query_metrics
 
 RESULTS_DIR = Path("results")
 RESULTS_MD = Path("RESULTS.md")
+V1_BUCKETS_PATH = Path("results/v1-buckets.json")
+BUCKET_NAMES = ("perfect", "near_miss", "deep_miss", "miss_100")
 
 
 def compute_aggregate_metrics(
@@ -49,6 +51,37 @@ def compute_aggregate_metrics(
     return {k: v / n for k, v in agg.items()}
 
 
+def load_query_buckets() -> dict[str, str]:
+    """Charge `V1_BUCKETS_PATH` : query_id -> nom du bucket v1 (figé, lecture seule)."""
+    data = json.loads(V1_BUCKETS_PATH.read_text(encoding="utf-8"))
+    return {qid: info["bucket"] for qid, info in data["queries"].items()}
+
+
+def compute_bucket_found_at_10(
+    results: list[RetrievalResult],
+    qrels: dict[str, set[str]],
+    query_buckets: dict[str, str],
+) -> dict[str, float]:
+    """Pour chaque bucket v1, part des requêtes avec un doc attendu dans le top 10."""
+    totals = dict.fromkeys(BUCKET_NAMES, 0)
+    founds = dict.fromkeys(BUCKET_NAMES, 0)
+    for r in results:
+        bucket = query_buckets.get(r.query_id)
+        if bucket not in totals:
+            continue
+        totals[bucket] += 1
+        relevant_ids = qrels.get(r.query_id, set())
+        retrieved_ids = [d["doc_id"] for d in r.retrieved]
+        if compute_per_query_metrics(retrieved_ids, relevant_ids)["found@10"]:
+            founds[bucket] += 1
+    return {
+        f"bucket_found_at_10_{name}": (
+            founds[name] / totals[name] if totals[name] else 0.0
+        )
+        for name in BUCKET_NAMES
+    }
+
+
 def build_run_artifact(
     campagne: str,
     run_name: str,
@@ -59,9 +92,15 @@ def build_run_artifact(
     dataset_hash: str,
     run_date: datetime,
     token_counts: dict[str, int] | None = None,
+    extended_metrics: dict[str, float] | None = None,
 ) -> dict:
-    """Assemble le JSON complet d'un run de campagne (format versioning.md)."""
+    """Assemble le JSON complet d'un run de campagne (format versioning.md).
+
+    `extended_metrics` (EXE-90) va dans un champ séparé de `metrics` : les 6
+    métriques historiques et leur ensemble de clés ne changent pas.
+    """
     token_counts = token_counts or {}
+    extended_metrics = extended_metrics or {}
 
     queries_json = []
     for r in results:
@@ -89,6 +128,7 @@ def build_run_artifact(
         "dataset_hash": dataset_hash,
         "config": config,
         "metrics": metrics,
+        "extended_metrics": extended_metrics,
         "queries": queries_json,
     }
 
@@ -158,9 +198,25 @@ def run_campaign(
     dataset_hash: str,
     run_date: datetime,
     token_counts: dict[str, int] | None = None,
+    truncated_pct: float = 0.0,
+    avg_retrieval_latency_ms: float = 0.0,
+    indexing_duration_seconds: float = 0.0,
 ) -> dict:
-    """Calcule les métriques d'un run déjà retrievé et écrit ses artefacts de campagne."""
+    """Calcule les métriques d'un run déjà retrievé et écrit ses artefacts de campagne.
+
+    `truncated_pct`, `avg_retrieval_latency_ms` et `indexing_duration_seconds`
+    viennent de `retrieve_campaign` (EXE-90) : ce module ne charge aucun modèle,
+    il ne fait que les reporter. La part par bucket v1 (`compute_bucket_found_at_10`)
+    est calculée ici, à partir de `V1_BUCKETS_PATH` (lecture seule).
+    """
     metrics = compute_aggregate_metrics(results, qrels)
+    query_buckets = load_query_buckets()
+    extended_metrics = {
+        **compute_bucket_found_at_10(results, qrels, query_buckets),
+        "truncated_pct": truncated_pct,
+        "avg_retrieval_latency_ms": avg_retrieval_latency_ms,
+        "indexing_duration_seconds": indexing_duration_seconds,
+    }
     run_data = build_run_artifact(
         campagne,
         run_name,
@@ -171,6 +227,7 @@ def run_campaign(
         dataset_hash,
         run_date,
         token_counts,
+        extended_metrics,
     )
     json_path = write_campaign_json(campagne, run_name, run_data, run_date)
 
@@ -178,4 +235,9 @@ def run_campaign(
     dette = f"max_seq={retriever_cfg.get('max_seq_length', '?')}"
     append_results_md_campaign(campagne, run_name, metrics, dette, run_date)
 
-    return {"run_data": run_data, "json_path": json_path, "metrics": metrics}
+    return {
+        "run_data": run_data,
+        "json_path": json_path,
+        "metrics": metrics,
+        "extended_metrics": extended_metrics,
+    }
