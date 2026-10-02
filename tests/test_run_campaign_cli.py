@@ -62,6 +62,7 @@ def _fake_retrieve_campaign(**kwargs):
         "truncated_pct": 0.0,
         "avg_retrieval_latency_ms": 0.0,
         "indexing_duration_seconds": 0.0,
+        "device": "cpu",
     }
     return results, qrels, "sha256:fake", stats
 

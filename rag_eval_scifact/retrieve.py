@@ -308,13 +308,31 @@ def _default_token_counter(model_name: str) -> Callable[[list[str]], list[int]]:
     return _count
 
 
+def _detect_device() -> str:
+    """Sonde l'accélérateur disponible (`torch`), sans charger aucun modèle.
+
+    Reflète l'accélérateur que `SentenceTransformer` choisirait lui-même, sans
+    attendre le chargement (coûteux) du modèle — pertinent même sur un hit de
+    cache, où aucun modèle n'est chargé pour ce run (EXE-94 critère 7).
+    """
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def _default_embedder(
-    model_name: str, max_seq_length: int
+    model_name: str, max_seq_length: int, batch_size: int = 64
 ) -> Callable[[list[str]], np.ndarray]:
     """Encode avec un `SentenceTransformer` chargé paresseusement, au plus une fois.
 
     Une campagne de test injecte son propre embedder (fonction fabriquée) pour ne
-    jamais charger de modèle réel — voir `retrieve_campaign`.
+    jamais charger de modèle réel — voir `retrieve_campaign`. `batch_size`
+    (valeur de configuration, EXE-94) : 64 reproduit v1 (MiniLM) ; un modèle à
+    fenêtre longue sature la mémoire à cette taille sur des documents longs.
     """
     model_box: dict[str, SentenceTransformer] = {}
 
@@ -324,7 +342,7 @@ def _default_embedder(
             model.max_seq_length = max_seq_length
             model_box["model"] = model
         embeddings = model_box["model"].encode(
-            texts, show_progress_bar=False, batch_size=64
+            texts, show_progress_bar=False, batch_size=batch_size
         )
         return np.array(embeddings, dtype=np.float32)
 
@@ -345,6 +363,8 @@ def retrieve_campaign(
     retriever_name: str = "dense",
     bm25_k1: float = 1.2,
     bm25_b: float = 0.75,
+    query_instruction: str = "",
+    batch_size: int = 64,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
     token_counter: Callable[[list[str]], list[int]] | None = None,
     offsets_fn: Callable[[str], list[tuple[int, int]]] | None = None,
@@ -383,6 +403,12 @@ def retrieve_campaign(
     - `avg_retrieval_latency_ms` : latence moyenne par requête de l'étape
       d'embedding des requêtes + classement, 0.0 quand le classement vient du cache.
     - `n_passages` (unité passages seulement) : nombre total de passages.
+    - `device` (EXE-94) : accélérateur disponible pour l'embedding (`"cpu"`
+      pour BM25, qui n'en charge jamais).
+
+    `query_instruction` (EXE-94 critère 2) se préfixe à chaque texte de
+    requête avant l'encodage dense ; les documents n'en reçoivent jamais.
+    Chaîne vide (défaut, MiniLM) : aucun préfixe, comportement v1 inchangé.
     """
     dataset_hash = compute_dataset_hash(corpus_path)
     print(f"  dataset_hash = {dataset_hash[:30]}...")
@@ -393,12 +419,13 @@ def retrieve_campaign(
     doc_ids = [doc["_id"] for doc in docs]
     doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
 
-    embed = embedder or _default_embedder(model_name, max_seq_length)
+    embed = embedder or _default_embedder(model_name, max_seq_length, batch_size)
     timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
     stats: dict[str, float] = {}
 
     if retriever_name == "bm25":
         query_texts = [q["text"] for q in queries]
+        stats["device"] = "cpu"
 
         if unit == "passages":
             offsets = offsets_fn or default_offsets_fn(model_name)
@@ -466,6 +493,7 @@ def retrieve_campaign(
             [p.token_count for p in passages], max_seq_length
         )
         stats["n_passages"] = float(len(passages))
+        stats["device"] = _detect_device()
 
         chunking_unit = f"passages-{chunk_size}-{chunk_overlap}"
         ranking_unit = f"{chunking_unit}-{grouping}-{grouping_top_n}"
@@ -489,6 +517,8 @@ def retrieve_campaign(
 
             retrieval_start = time.perf_counter()
             query_texts = [q["text"] for q in queries]
+            if query_instruction:
+                query_texts = [query_instruction + t for t in query_texts]
             query_embeddings = embed(query_texts)
             ranked = _rank_top_k_grouped(
                 queries,
@@ -528,6 +558,7 @@ def retrieve_campaign(
         stats["truncated_pct"] = compute_truncated_pct(
             count_tokens(doc_texts), max_seq_length
         )
+        stats["device"] = _detect_device()
 
         def _compute_ranking() -> list[dict]:
             def _timed_embed_docs() -> np.ndarray:
@@ -548,6 +579,8 @@ def retrieve_campaign(
 
             retrieval_start = time.perf_counter()
             query_texts = [q["text"] for q in queries]
+            if query_instruction:
+                query_texts = [query_instruction + t for t in query_texts]
             query_embeddings = embed(query_texts)
             ranked = _rank_top_k(
                 queries, doc_ids, doc_embeddings, query_embeddings, top_k

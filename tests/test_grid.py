@@ -91,16 +91,73 @@ def test_v2_grid_declares_the_bm25_passages_combo_no_rerank():
     assert cfg.rerank is None
 
 
-def test_v2_grid_declares_exactly_four_combos():
+def test_v2_grid_declares_exactly_seven_combos():
     combos = load_grid_combos()
 
-    assert len(combos) == 4
+    assert len(combos) == 7
     assert {c["run_name"] for c in combos} == {
         "dense-minilm-256-sans-reranker",
         "dense-minilm-passages-sans-reranker",
         "bm25-document-sans-reranker",
         "bm25-passages-sans-reranker",
+        "dense-qwen3-256-sans-reranker",
+        "dense-qwen3-abstract-entier-sans-reranker",
+        "dense-qwen3-passages-sans-reranker",
     }
+
+
+# ---------------------------------------------------------------------------
+# EXE-94 critère 8 — les trois combinaisons Qwen3-Embedding, sans reranker
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_the_qwen3_256_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(c for c in combos if c["run_name"] == "dense-qwen3-256-sans-reranker")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "dense"
+    assert cfg.retriever.model == "Qwen/Qwen3-Embedding-0.6B"
+    assert cfg.retriever.max_seq_length == 256
+    assert cfg.retriever.unit == "document"
+    assert cfg.retriever.query_instruction != ""
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_qwen3_abstract_entier_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(
+        c
+        for c in combos
+        if c["run_name"] == "dense-qwen3-abstract-entier-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "dense"
+    assert cfg.retriever.model == "Qwen/Qwen3-Embedding-0.6B"
+    assert cfg.retriever.max_seq_length == 2048
+    assert cfg.retriever.unit == "document"
+    assert cfg.retriever.query_instruction != ""
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_qwen3_passages_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(
+        c for c in combos if c["run_name"] == "dense-qwen3-passages-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "dense"
+    assert cfg.retriever.model == "Qwen/Qwen3-Embedding-0.6B"
+    assert cfg.retriever.unit == "passages"
+    assert cfg.retriever.chunk_size == 128
+    assert cfg.retriever.chunk_overlap == 32
+    assert cfg.retriever.query_instruction != ""
+    assert cfg.rerank is None
 
 
 # ---------------------------------------------------------------------------

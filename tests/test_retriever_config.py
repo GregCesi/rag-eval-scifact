@@ -69,3 +69,44 @@ def test_bm25_is_selectable_and_its_parameters_are_overridable():
     assert cfg.retriever.name == "bm25"
     assert cfg.retriever.bm25_k1 == 2.0
     assert cfg.retriever.bm25_b == 0.5
+
+
+# ---------------------------------------------------------------------------
+# EXE-94 critère 1, 2 — Qwen3-Embedding sélectionnable, MiniLM reste le défaut
+# ---------------------------------------------------------------------------
+
+
+def test_defaults_select_minilm_with_no_query_instruction():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.retriever.model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert cfg.retriever.max_seq_length == 256
+    assert cfg.retriever.query_instruction == ""
+    assert cfg.retriever.batch_size == 64
+
+
+def test_batch_size_is_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config", overrides=["retriever.batch_size=8"])
+
+    assert cfg.retriever.batch_size == 8
+
+
+def test_qwen_model_and_query_instruction_are_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(
+            config_name="config",
+            overrides=[
+                "retriever.model=Qwen/Qwen3-Embedding-0.6B",
+                "retriever.max_seq_length=2048",
+                "retriever.query_instruction=Instruct: retrieve relevant documents. Query: ",
+            ],
+        )
+
+    assert cfg.retriever.model == "Qwen/Qwen3-Embedding-0.6B"
+    assert cfg.retriever.max_seq_length == 2048
+    assert (
+        cfg.retriever.query_instruction
+        == "Instruct: retrieve relevant documents. Query: "
+    )

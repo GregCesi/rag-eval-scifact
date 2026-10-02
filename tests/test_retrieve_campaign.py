@@ -11,6 +11,7 @@ import json
 
 import numpy as np
 
+import rag_eval_scifact.retrieve as retrieve_module
 from rag_eval_scifact.retrieve import retrieve_campaign
 
 TOP_K = 5
@@ -23,6 +24,18 @@ def _fake_embedder(calls: list):
     def _embed(texts: list[str]) -> np.ndarray:
         calls.append(len(texts))
         # vecteurs déterministes, jamais nuls (évite la division par zéro L2)
+        return np.array(
+            [[(hash(t) % 97) + 1, (len(t) % 53) + 1] for t in texts], dtype=np.float32
+        )
+
+    return _embed
+
+
+def _capturing_embedder(seen: list):
+    """Comme `_fake_embedder`, mais garde les textes exacts vus par chaque appel."""
+
+    def _embed(texts: list[str]) -> np.ndarray:
+        seen.append(list(texts))
         return np.array(
             [[(hash(t) % 97) + 1, (len(t) % 53) + 1] for t in texts], dtype=np.float32
         )
@@ -59,6 +72,7 @@ def test_first_run_calls_embedder_for_docs_and_queries(tmp_path):
         "truncated_pct",
         "avg_retrieval_latency_ms",
         "indexing_duration_seconds",
+        "device",
     }
 
 
@@ -409,6 +423,133 @@ def test_document_unit_is_unaffected_by_a_passages_run_sharing_the_cache_dir(tmp
 
     assert len(document_calls) == 2
     assert len(results[0].retrieved) == TOP_K
+
+
+# ---------------------------------------------------------------------------
+# EXE-94 — Qwen3-Embedding : instruction sur les requêtes, cache séparé
+# ---------------------------------------------------------------------------
+
+
+def test_query_instruction_prefixes_only_query_texts_document_unit(tmp_path):
+    seen: list = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_capturing_embedder(seen),
+        token_counter=_fake_token_counter(),
+        query_instruction="INSTR: ",
+    )
+
+    doc_texts_seen, query_texts_seen = seen
+    assert not any(t.startswith("INSTR: ") for t in doc_texts_seen)
+    assert all(t.startswith("INSTR: ") for t in query_texts_seen)
+
+
+def test_query_instruction_prefixes_only_query_texts_passages_unit(tmp_path):
+    seen: list = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=PASSAGES_WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        unit="passages",
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        embedder=_capturing_embedder(seen),
+        offsets_fn=_char_offsets_fn(),
+        query_instruction="INSTR: ",
+    )
+
+    passage_texts_seen, query_texts_seen = seen
+    assert not any(t.startswith("INSTR: ") for t in passage_texts_seen)
+    assert all(t.startswith("INSTR: ") for t in query_texts_seen)
+
+
+def test_no_instruction_by_default_leaves_query_texts_unchanged(tmp_path):
+    seen: list = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_capturing_embedder(seen),
+        token_counter=_fake_token_counter(),
+    )
+
+    _, query_texts_seen = seen
+    assert not any(t.startswith("INSTR: ") for t in query_texts_seen)
+
+
+def test_qwen_model_cache_is_separate_from_minilm_default_run(tmp_path):
+    """Changer de modèle vers Qwen (avec instruction) n'affecte jamais le
+    cache du run MiniLM par défaut, qui reste rejouable à l'identique
+    (critère 6)."""
+    minilm_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(minilm_calls),
+        token_counter=_fake_token_counter(),
+    )
+
+    qwen_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name="Qwen/Qwen3-Embedding-0.6B",
+        max_seq_length=2048,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(qwen_calls),
+        token_counter=_fake_token_counter(),
+        query_instruction="Instruct: ...\nQuery: ",
+    )
+
+    assert len(qwen_calls) == 2  # aucun hit sur le cache MiniLM
+
+    minilm_replay: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(minilm_replay),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert minilm_replay == []  # MiniLM toujours servi par son propre cache
+
+
+def test_default_embedder_forwards_configured_batch_size(monkeypatch):
+    """H7 — un modèle à fenêtre longue (Qwen) sature la mémoire au batch_size
+    par défaut (64) ; `batch_size` doit atteindre `SentenceTransformer.encode`
+    tel que configuré, sans jamais charger de modèle réel (classe fabriquée)."""
+    seen_batch_sizes: list[int] = []
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_name: str) -> None:
+            self.max_seq_length = None
+
+        def encode(self, texts, show_progress_bar=False, batch_size=64):
+            seen_batch_sizes.append(batch_size)
+            return np.zeros((len(texts), 2), dtype=np.float32)
+
+    monkeypatch.setattr(
+        retrieve_module, "SentenceTransformer", _FakeSentenceTransformer
+    )
+
+    embed = retrieve_module._default_embedder("fake-model", 2048, batch_size=8)
+    embed(["un texte", "un autre"])
+
+    assert seen_batch_sizes == [8]
 
 
 # ---------------------------------------------------------------------------

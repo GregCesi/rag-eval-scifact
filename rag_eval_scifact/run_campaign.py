@@ -50,6 +50,8 @@ def main(cfg: DictConfig) -> None:
         retriever_name=cfg.retriever.name,
         bm25_k1=cfg.retriever.bm25_k1,
         bm25_b=cfg.retriever.bm25_b,
+        query_instruction=cfg.retriever.query_instruction,
+        batch_size=cfg.retriever.batch_size,
     )
 
     all_relevant_ids: set[str] = set()
@@ -70,6 +72,7 @@ def main(cfg: DictConfig) -> None:
         avg_retrieval_latency_ms=stats["avg_retrieval_latency_ms"],
         indexing_duration_seconds=stats["indexing_duration_seconds"],
         n_passages=stats.get("n_passages", 0.0),
+        device=stats["device"],
     )
 
     mlflow_run_id = log_campaign_run(
@@ -79,6 +82,7 @@ def main(cfg: DictConfig) -> None:
         metrics=outcome["metrics"],
         json_path=outcome["json_path"],
         extended_metrics=outcome["extended_metrics"],
+        device=outcome["device"],
     )
 
     n_traces = 0

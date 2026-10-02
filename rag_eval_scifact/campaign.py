@@ -93,11 +93,14 @@ def build_run_artifact(
     run_date: datetime,
     token_counts: dict[str, int] | None = None,
     extended_metrics: dict[str, float] | None = None,
+    device: str = "cpu",
 ) -> dict:
     """Assemble le JSON complet d'un run de campagne (format versioning.md).
 
     `extended_metrics` (EXE-90) va dans un champ séparé de `metrics` : les 6
-    métriques historiques et leur ensemble de clés ne changent pas.
+    métriques historiques et leur ensemble de clés ne changent pas. `device`
+    (EXE-94 critère 7) est une chaîne, donc hors d'`extended_metrics` (valeurs
+    numériques, journalisées par `mlflow.log_metrics`).
     """
     token_counts = token_counts or {}
     extended_metrics = extended_metrics or {}
@@ -126,6 +129,7 @@ def build_run_artifact(
         "run_name": run_name,
         "date": run_date.isoformat(timespec="seconds"),
         "dataset_hash": dataset_hash,
+        "device": device,
         "config": config,
         "metrics": metrics,
         "extended_metrics": extended_metrics,
@@ -202,14 +206,16 @@ def run_campaign(
     avg_retrieval_latency_ms: float = 0.0,
     indexing_duration_seconds: float = 0.0,
     n_passages: float = 0.0,
+    device: str = "cpu",
 ) -> dict:
     """Calcule les métriques d'un run déjà retrievé et écrit ses artefacts de campagne.
 
-    `truncated_pct`, `avg_retrieval_latency_ms` et `indexing_duration_seconds`
-    viennent de `retrieve_campaign` (EXE-90) : ce module ne charge aucun modèle,
-    il ne fait que les reporter. `n_passages` (EXE-92) vaut 0 pour un run
-    unité document. La part par bucket v1 (`compute_bucket_found_at_10`)
-    est calculée ici, à partir de `V1_BUCKETS_PATH` (lecture seule).
+    `truncated_pct`, `avg_retrieval_latency_ms`, `indexing_duration_seconds`
+    et `device` viennent de `retrieve_campaign` (EXE-90, EXE-94) : ce module ne
+    charge aucun modèle, il ne fait que les reporter. `n_passages` (EXE-92)
+    vaut 0 pour un run unité document. La part par bucket v1
+    (`compute_bucket_found_at_10`) est calculée ici, à partir de
+    `V1_BUCKETS_PATH` (lecture seule).
     """
     metrics = compute_aggregate_metrics(results, qrels)
     query_buckets = load_query_buckets()
@@ -231,6 +237,7 @@ def run_campaign(
         run_date,
         token_counts,
         extended_metrics,
+        device,
     )
     json_path = write_campaign_json(campagne, run_name, run_data, run_date)
 
@@ -243,4 +250,5 @@ def run_campaign(
         "json_path": json_path,
         "metrics": metrics,
         "extended_metrics": extended_metrics,
+        "device": device,
     }

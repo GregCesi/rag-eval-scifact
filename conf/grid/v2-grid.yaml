@@ -34,3 +34,30 @@ runs:
       - retriever.chunk_size=128
       - retriever.chunk_overlap=32
       - rerank=null
+  - run_name: dense-qwen3-256-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=256
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null
+  - run_name: dense-qwen3-abstract-entier-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null
+  - run_name: dense-qwen3-passages-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null

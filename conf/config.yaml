@@ -28,6 +28,13 @@ retriever:
   # Elasticsearch (choix du chat, H2).
   bm25_k1: 1.2
   bm25_b: 0.75
+  # Instruction préfixée aux requêtes avant encodage (EXE-94 critère 2) ; jamais
+  # aux documents. Chaîne vide (défaut, MiniLM) : aucun préfixe, v1 inchangé.
+  query_instruction: ""
+  # Taille de lot de l'encodage (EXE-94 H7) : 64 reproduit v1 (MiniLM, textes
+  # courts) ; un modèle à fenêtre longue (Qwen) sature la mémoire à cette
+  # taille sur les documents longs — abaissé à 8 dans ses combinaisons.
+  batch_size: 64
 
 fusion: null
 rerank: null
