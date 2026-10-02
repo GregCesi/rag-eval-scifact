@@ -15,6 +15,15 @@ retriever:
   model: sentence-transformers/all-MiniLM-L6-v2
   max_seq_length: 256
   dim: 384
+  # Unité du retrieval (EXE-92) : "document" (défaut, reproduit v1 à l'identique)
+  # ou "passages" — chaque document se découpe en fenêtres de chunk_size tokens
+  # avec chunk_overlap de chevauchement, puis se regroupe au niveau document
+  # (grouping : "max" ou "sum", grouping_top_n borne le "sum").
+  unit: document
+  chunk_size: 128
+  chunk_overlap: 32
+  grouping: max
+  grouping_top_n: 1000
 
 fusion: null
 rerank: null

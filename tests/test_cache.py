@@ -1,4 +1,5 @@
-"""Tests du cache disque des calculs lourds (EXE-88, critères 7, 8, 9).
+"""Tests du cache disque des calculs lourds (EXE-88, critères 7, 8, 9 ;
+EXE-92, critère 6 — le découpage est aussi une dimension du cache).
 
 N'écrivent jamais dans le cache réel (`~/.cache/rag-eval-scifact`) : chaque
 test pointe `cache_dir` vers `tmp_path`. Ne chargent aucun modèle
@@ -187,6 +188,87 @@ def test_ranking_cache_is_not_reused_across_models(tmp_path):
         100,
         "test",
         other_compute,
+    )
+
+    assert hit is False
+    assert len(other_compute.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# EXE-92 critère 6 — le découpage en passages est une dimension du cache
+# ---------------------------------------------------------------------------
+
+
+def test_document_embeddings_cache_is_not_reused_across_units(tmp_path):
+    passage_ids = ["d1::0", "d1::1"]
+    fake_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    get_document_embeddings(
+        tmp_path,
+        DATASET_HASH,
+        MODEL,
+        WINDOW,
+        passage_ids,
+        _counting_fn(fake_embeddings),
+    )
+
+    passages_compute = _counting_fn(fake_embeddings)
+    _, hit = get_document_embeddings(
+        tmp_path,
+        DATASET_HASH,
+        MODEL,
+        WINDOW,
+        passage_ids,
+        passages_compute,
+        unit="passages-128-32",
+    )
+
+    assert hit is False
+    assert len(passages_compute.calls) == 1
+
+
+def test_document_embeddings_cache_hit_when_unit_matches(tmp_path):
+    passage_ids = ["d1::0", "d1::1"]
+    fake_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    get_document_embeddings(
+        tmp_path,
+        DATASET_HASH,
+        MODEL,
+        WINDOW,
+        passage_ids,
+        _counting_fn(fake_embeddings),
+        unit="passages-128-32",
+    )
+
+    second_compute = _counting_fn(fake_embeddings)
+    _, hit = get_document_embeddings(
+        tmp_path,
+        DATASET_HASH,
+        MODEL,
+        WINDOW,
+        passage_ids,
+        second_compute,
+        unit="passages-128-32",
+    )
+
+    assert hit is True
+    assert len(second_compute.calls) == 0
+
+
+def test_ranking_cache_is_not_reused_across_units(tmp_path):
+    get_ranking(
+        tmp_path, DATASET_HASH, MODEL, WINDOW, 100, "test", _counting_fn(RANKING)
+    )
+
+    other_compute = _counting_fn(RANKING)
+    _, hit = get_ranking(
+        tmp_path,
+        DATASET_HASH,
+        MODEL,
+        WINDOW,
+        100,
+        "test",
+        other_compute,
+        unit="passages-128-32-max-1000",
     )
 
     assert hit is False

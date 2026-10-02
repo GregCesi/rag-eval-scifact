@@ -42,6 +42,11 @@ def main(cfg: DictConfig) -> None:
         max_seq_length=cfg.retriever.max_seq_length,
         split=cfg.split,
         cache_dir=cfg.cache_dir,
+        unit=cfg.retriever.unit,
+        chunk_size=cfg.retriever.chunk_size,
+        chunk_overlap=cfg.retriever.chunk_overlap,
+        grouping=cfg.retriever.grouping,
+        grouping_top_n=cfg.retriever.grouping_top_n,
     )
 
     all_relevant_ids: set[str] = set()
@@ -61,6 +66,7 @@ def main(cfg: DictConfig) -> None:
         truncated_pct=stats["truncated_pct"],
         avg_retrieval_latency_ms=stats["avg_retrieval_latency_ms"],
         indexing_duration_seconds=stats["indexing_duration_seconds"],
+        n_passages=stats.get("n_passages", 0.0),
     )
 
     mlflow_run_id = log_campaign_run(

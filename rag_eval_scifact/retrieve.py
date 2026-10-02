@@ -23,6 +23,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from rag_eval_scifact.cache import get_document_embeddings, get_ranking
+from rag_eval_scifact.chunking import chunk_text, default_offsets_fn
 from rag_eval_scifact.ingest import CORPUS_PATH, compute_dataset_hash, load_corpus
 
 # --- Constantes ---
@@ -116,6 +117,83 @@ def _rank_top_k(
                 query_id=query["_id"],
                 query_text=query["text"],
                 retrieved=retrieved,
+            )
+        )
+    return results
+
+
+def group_passage_scores(
+    passage_doc_ids: list[str],
+    scores: np.ndarray,
+    grouping: str,
+    grouping_top_n: int,
+) -> dict[str, float]:
+    """Regroupe des scores de passages (une requête) en scores de documents.
+
+    `max` (défaut) : le score d'un document est le meilleur score parmi
+    TOUS ses passages (jamais restreint par `grouping_top_n` : le max sur
+    l'ensemble complet est aussi simple à calculer que sur un sous-ensemble).
+    `sum` : la somme des scores de ses passages présents parmi les
+    `grouping_top_n` premiers passages de la requête (tous documents
+    confondus) ; un document sans passage dans ce sous-ensemble n'apparaît pas.
+    """
+    if grouping == "sum":
+        n = min(grouping_top_n, len(scores))
+        if n <= 0:
+            return {}
+        top_indices = np.argpartition(scores, -n)[-n:]
+        doc_scores: dict[str, float] = {}
+        for idx in top_indices:
+            doc_id = passage_doc_ids[idx]
+            doc_scores[doc_id] = doc_scores.get(doc_id, 0.0) + float(scores[idx])
+        return doc_scores
+
+    doc_scores = {}
+    for idx, doc_id in enumerate(passage_doc_ids):
+        score = float(scores[idx])
+        if doc_id not in doc_scores or score > doc_scores[doc_id]:
+            doc_scores[doc_id] = score
+    return doc_scores
+
+
+def _rank_top_k_grouped(
+    queries: list[dict],
+    passage_ids: list[str],
+    passage_doc_ids: list[str],
+    passage_embeddings: np.ndarray,
+    query_embeddings: np.ndarray,
+    top_k: int,
+    grouping: str,
+    grouping_top_n: int,
+) -> list[RetrievalResult]:
+    """Cosinus brute-force sur les passages, puis regroupement au niveau document.
+
+    La liste classée retournée ne contient que des identifiants de documents,
+    sans doublon (clés d'un dict), top_k au plus.
+    """
+    passage_norms = np.linalg.norm(passage_embeddings, axis=1, keepdims=True)
+    passage_embeddings_norm = passage_embeddings / passage_norms
+
+    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
+    query_embeddings_norm = query_embeddings / query_norms
+
+    sim_matrix = query_embeddings_norm @ passage_embeddings_norm.T
+
+    results: list[RetrievalResult] = []
+    for i, query in enumerate(queries):
+        doc_scores = group_passage_scores(
+            passage_doc_ids, sim_matrix[i], grouping, grouping_top_n
+        )
+        ranked_docs = sorted(doc_scores.items(), key=lambda kv: kv[1], reverse=True)[
+            :top_k
+        ]
+        retrieved = [
+            {"doc_id": doc_id, "rank": rank, "score": score}
+            for rank, (doc_id, score) in enumerate(ranked_docs, start=1)
+        ]
+        results.append(
+            RetrievalResult(
+                query_id=query["_id"], query_text=query["text"], retrieved=retrieved
             )
         )
     return results
@@ -230,8 +308,14 @@ def retrieve_campaign(
     max_seq_length: int,
     split: str,
     cache_dir: Path,
+    unit: str = "document",
+    chunk_size: int = 128,
+    chunk_overlap: int = 32,
+    grouping: str = "max",
+    grouping_top_n: int = 1000,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
     token_counter: Callable[[list[str]], list[int]] | None = None,
+    offsets_fn: Callable[[str], list[tuple[int, int]]] | None = None,
     corpus_path: Path = CORPUS_PATH,
     queries_path: Path = QUERIES_PATH,
     qrels_path: Path = QRELS_PATH,
@@ -241,18 +325,26 @@ def retrieve_campaign(
     Contrairement à `retrieve()` (v1 historique, lit `chroma_data/`), ce chemin
     embedde les documents lui-même — nécessaire pour qu'une stratégie puisse
     changer de modèle ou de fenêtre — et met en cache les deux calculs lourds
-    (embeddings de documents, classement de premier étage) sous `cache_dir`,
-    séparé de `chroma_data/`. `embedder` et `token_counter` sont injectables pour
-    les tests : aucun modèle ni tokenizer n'est chargé tant qu'ils ne sont pas
-    fournis par l'appelant.
+    (embeddings, classement de premier étage) sous `cache_dir`, séparé de
+    `chroma_data/`. `embedder`, `token_counter` et `offsets_fn` sont injectables
+    pour les tests : aucun modèle ni tokenizer n'est chargé tant qu'ils ne sont
+    pas fournis par l'appelant.
 
-    En plus du triplet historique, retourne un dict `stats` (EXE-90) :
-    - `truncated_pct` : part des documents dont le comptage dépasse la fenêtre,
-      recalculée à chaque run (pas un calcul mis en cache).
-    - `indexing_duration_seconds` : durée de l'embedding des documents, 0.0
-      quand le cache (embeddings ou classement) a servi.
+    `unit` (EXE-92) : `"document"` (défaut, reproduit v1 à l'identique) ou
+    `"passages"` — chaque document est découpé en fenêtres de `chunk_size`
+    tokens avec `chunk_overlap` de chevauchement (`rag_eval_scifact.chunking`),
+    le retrieval se fait sur les passages puis se regroupe au niveau document
+    (`grouping` : `"max"` ou `"sum"`, voir `group_passage_scores`).
+
+    En plus du triplet historique, retourne un dict `stats` (EXE-90, EXE-92) :
+    - `truncated_pct` : part des documents (unité document) ou des passages
+      (unité passages) dont le comptage dépasse la fenêtre, recalculée à
+      chaque run (pas un calcul mis en cache).
+    - `indexing_duration_seconds` : durée de l'embedding des documents ou des
+      passages, 0.0 quand le cache (embeddings ou classement) a servi.
     - `avg_retrieval_latency_ms` : latence moyenne par requête de l'étape
       d'embedding des requêtes + classement, 0.0 quand le classement vient du cache.
+    - `n_passages` (unité passages seulement) : nombre total de passages.
     """
     dataset_hash = compute_dataset_hash(corpus_path)
     print(f"  dataset_hash = {dataset_hash[:30]}...")
@@ -263,53 +355,133 @@ def retrieve_campaign(
     doc_ids = [doc["_id"] for doc in docs]
     doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
 
-    count_tokens = token_counter or _default_token_counter(model_name)
-    truncated_pct = compute_truncated_pct(count_tokens(doc_texts), max_seq_length)
-
     embed = embedder or _default_embedder(model_name, max_seq_length)
-
     timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
+    stats: dict[str, float] = {}
 
-    def _compute_ranking() -> list[dict]:
-        def _timed_embed_docs() -> np.ndarray:
-            start = time.perf_counter()
-            vectors = embed(doc_texts)
-            timings["indexing_duration_seconds"] = time.perf_counter() - start
-            return vectors
+    if unit == "passages":
+        offsets = offsets_fn or default_offsets_fn(model_name)
+        passages = [
+            passage
+            for doc_id, text in zip(doc_ids, doc_texts)
+            for passage in chunk_text(doc_id, text, chunk_size, chunk_overlap, offsets)
+        ]
+        passage_ids = [p.passage_id for p in passages]
+        passage_doc_ids = [p.doc_id for p in passages]
+        passage_texts = [p.text for p in passages]
+        stats["truncated_pct"] = compute_truncated_pct(
+            [p.token_count for p in passages], max_seq_length
+        )
+        stats["n_passages"] = float(len(passages))
 
-        doc_embeddings, _ = get_document_embeddings(
+        chunking_unit = f"passages-{chunk_size}-{chunk_overlap}"
+        ranking_unit = f"{chunking_unit}-{grouping}-{grouping_top_n}"
+
+        def _compute_ranking() -> list[dict]:
+            def _timed_embed_passages() -> np.ndarray:
+                start = time.perf_counter()
+                vectors = embed(passage_texts)
+                timings["indexing_duration_seconds"] = time.perf_counter() - start
+                return vectors
+
+            passage_embeddings, _ = get_document_embeddings(
+                cache_dir,
+                dataset_hash,
+                model_name,
+                max_seq_length,
+                passage_ids,
+                _timed_embed_passages,
+                unit=chunking_unit,
+            )
+
+            retrieval_start = time.perf_counter()
+            query_texts = [q["text"] for q in queries]
+            query_embeddings = embed(query_texts)
+            ranked = _rank_top_k_grouped(
+                queries,
+                passage_ids,
+                passage_doc_ids,
+                passage_embeddings,
+                query_embeddings,
+                top_k,
+                grouping,
+                grouping_top_n,
+            )
+            timings["retrieval_duration_seconds"] = (
+                time.perf_counter() - retrieval_start
+            )
+
+            return [
+                {
+                    "query_id": r.query_id,
+                    "query_text": r.query_text,
+                    "retrieved": r.retrieved,
+                }
+                for r in ranked
+            ]
+
+        ranking, _ = get_ranking(
             cache_dir,
             dataset_hash,
             model_name,
             max_seq_length,
-            doc_ids,
-            _timed_embed_docs,
+            top_k,
+            split,
+            _compute_ranking,
+            unit=ranking_unit,
+        )
+    else:
+        count_tokens = token_counter or _default_token_counter(model_name)
+        stats["truncated_pct"] = compute_truncated_pct(
+            count_tokens(doc_texts), max_seq_length
         )
 
-        retrieval_start = time.perf_counter()
-        query_texts = [q["text"] for q in queries]
-        query_embeddings = embed(query_texts)
-        ranked = _rank_top_k(queries, doc_ids, doc_embeddings, query_embeddings, top_k)
-        timings["retrieval_duration_seconds"] = time.perf_counter() - retrieval_start
+        def _compute_ranking() -> list[dict]:
+            def _timed_embed_docs() -> np.ndarray:
+                start = time.perf_counter()
+                vectors = embed(doc_texts)
+                timings["indexing_duration_seconds"] = time.perf_counter() - start
+                return vectors
 
-        return [
-            {
-                "query_id": r.query_id,
-                "query_text": r.query_text,
-                "retrieved": r.retrieved,
-            }
-            for r in ranked
-        ]
+            doc_embeddings, _ = get_document_embeddings(
+                cache_dir,
+                dataset_hash,
+                model_name,
+                max_seq_length,
+                doc_ids,
+                _timed_embed_docs,
+                unit="document",
+            )
 
-    ranking, _ = get_ranking(
-        cache_dir,
-        dataset_hash,
-        model_name,
-        max_seq_length,
-        top_k,
-        split,
-        _compute_ranking,
-    )
+            retrieval_start = time.perf_counter()
+            query_texts = [q["text"] for q in queries]
+            query_embeddings = embed(query_texts)
+            ranked = _rank_top_k(
+                queries, doc_ids, doc_embeddings, query_embeddings, top_k
+            )
+            timings["retrieval_duration_seconds"] = (
+                time.perf_counter() - retrieval_start
+            )
+
+            return [
+                {
+                    "query_id": r.query_id,
+                    "query_text": r.query_text,
+                    "retrieved": r.retrieved,
+                }
+                for r in ranked
+            ]
+
+        ranking, _ = get_ranking(
+            cache_dir,
+            dataset_hash,
+            model_name,
+            max_seq_length,
+            top_k,
+            split,
+            _compute_ranking,
+            unit="document",
+        )
 
     results = [
         RetrievalResult(
@@ -320,14 +492,10 @@ def retrieve_campaign(
         for entry in ranking
     ]
 
-    avg_retrieval_latency_ms = (
+    stats["avg_retrieval_latency_ms"] = (
         timings["retrieval_duration_seconds"] * 1000 / len(queries) if queries else 0.0
     )
-    stats = {
-        "truncated_pct": truncated_pct,
-        "avg_retrieval_latency_ms": avg_retrieval_latency_ms,
-        "indexing_duration_seconds": timings["indexing_duration_seconds"],
-    }
+    stats["indexing_duration_seconds"] = timings["indexing_duration_seconds"]
     return results, qrels, dataset_hash, stats
 
 

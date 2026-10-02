@@ -139,7 +139,10 @@ def test_launch_skips_combo_with_existing_result_and_says_so(
     run_name = combos[0]["run_name"]
     campaign_dir = _isolated_grid / "results" / "dev"
     campaign_dir.mkdir(parents=True)
-    (campaign_dir / f"{run_name}-2026-10-02T00-00-00-000000.json.gz").touch()
+    for combo in combos:
+        (
+            campaign_dir / f"{combo['run_name']}-2026-10-02T00-00-00-000000.json.gz"
+        ).touch()
 
     calls = []
     monkeypatch.setattr(run_campaign_module, "main", lambda cfg: calls.append(cfg))

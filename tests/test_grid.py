@@ -1,7 +1,9 @@
 """Tests de la grille v2-grid : fichier déclaratif + détection des runs déjà faits.
 
 N'importe aucun module d'embedding : `load_grid_combos` lit un YAML via OmegaConf,
-`has_existing_result` ne fait que lister des fichiers (EXE-91, critères 1 et 5).
+`has_existing_result` ne fait que lister des fichiers (EXE-91, critères 1 et 5 ;
+EXE-92, critère 8 — la combinaison dense/MiniLM/passages s'ajoute à côté de
+celle du document entier, sans toucher ce module).
 """
 
 from __future__ import annotations
@@ -11,28 +13,62 @@ from hydra import compose, initialize_config_dir
 from rag_eval_scifact.grid import has_existing_result, load_grid_combos
 from rag_eval_scifact.run_campaign import CONF_DIR
 
-# ---------------------------------------------------------------------------
-# Critère 1 — une seule combinaison déclarée, celle déjà réalisable
-# ---------------------------------------------------------------------------
 
-
-def test_v2_grid_declares_exactly_one_combo_dense_minilm_256_no_rerank():
-    combos = load_grid_combos()
-
-    assert len(combos) == 1
-    combo = combos[0]
-    assert combo["run_name"]
-
+def _compose_combo(combo: dict):
     with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
-        cfg = compose(
+        return compose(
             config_name="config",
             overrides=[f"run_name={combo['run_name']}", *combo["overrides"]],
         )
 
+
+# ---------------------------------------------------------------------------
+# Critère 1 — la combinaison document entier, déjà réalisable
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_the_document_combo_dense_minilm_256_no_rerank():
+    combos = load_grid_combos()
+    combo = next(c for c in combos if c["run_name"] == "dense-minilm-256-sans-reranker")
+
+    cfg = _compose_combo(combo)
+
     assert cfg.retriever.name == "dense"
     assert cfg.retriever.model == "sentence-transformers/all-MiniLM-L6-v2"
     assert cfg.retriever.max_seq_length == 256
+    assert cfg.retriever.unit == "document"
     assert cfg.rerank is None
+
+
+# ---------------------------------------------------------------------------
+# EXE-92 critère 8 — la combinaison dense/MiniLM/passages, sans reranker
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_the_passages_combo_dense_minilm_passages_no_rerank():
+    combos = load_grid_combos()
+    combo = next(
+        c for c in combos if c["run_name"] == "dense-minilm-passages-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "dense"
+    assert cfg.retriever.model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert cfg.retriever.unit == "passages"
+    assert cfg.retriever.chunk_size == 128
+    assert cfg.retriever.chunk_overlap == 32
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_exactly_two_combos():
+    combos = load_grid_combos()
+
+    assert len(combos) == 2
+    assert {c["run_name"] for c in combos} == {
+        "dense-minilm-256-sans-reranker",
+        "dense-minilm-passages-sans-reranker",
+    }
 
 
 # ---------------------------------------------------------------------------

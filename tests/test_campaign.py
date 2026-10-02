@@ -331,6 +331,29 @@ def test_extended_metrics_default_to_zero_when_not_provided(_isolate_artifacts):
     assert extended["truncated_pct"] == 0.0
     assert extended["avg_retrieval_latency_ms"] == 0.0
     assert extended["indexing_duration_seconds"] == 0.0
+    assert extended["n_passages"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# EXE-92 critère 2 — nombre total de passages porté jusqu'au JSON du run
+# ---------------------------------------------------------------------------
+
+
+def test_n_passages_is_written_to_extended_metrics_when_provided(_isolate_artifacts):
+    results, qrels = _fake_results()
+
+    outcome = run_campaign(
+        "campagne-test",
+        "run-1",
+        _base_config(),
+        results,
+        qrels,
+        "sha256:abc",
+        RUN_DATE,
+        n_passages=18042,
+    )
+
+    assert outcome["run_data"]["extended_metrics"]["n_passages"] == 18042
 
 
 def test_extended_metrics_do_not_change_results_md_format(_isolate_artifacts):

@@ -27,6 +27,7 @@ def document_embeddings_cache_path(
     dataset_hash: str,
     model_name: str,
     max_seq_length: int,
+    unit: str = "document",
 ) -> Path:
     return (
         Path(cache_dir).expanduser()
@@ -34,6 +35,7 @@ def document_embeddings_cache_path(
         / _safe(dataset_hash)
         / _safe(model_name)
         / f"window-{max_seq_length}"
+        / _safe(unit)
         / "documents.npz"
     )
 
@@ -45,6 +47,7 @@ def ranking_cache_path(
     max_seq_length: int,
     top_k: int,
     split: str,
+    unit: str = "document",
 ) -> Path:
     return (
         Path(cache_dir).expanduser()
@@ -52,6 +55,7 @@ def ranking_cache_path(
         / _safe(dataset_hash)
         / _safe(model_name)
         / f"window-{max_seq_length}"
+        / _safe(unit)
         / f"top{top_k}"
         / f"{split}.json"
     )
@@ -64,14 +68,17 @@ def get_document_embeddings(
     max_seq_length: int,
     doc_ids: list[str],
     compute_fn: Callable[[], np.ndarray],
+    unit: str = "document",
 ) -> tuple[np.ndarray, bool]:
-    """Embeddings des documents, depuis le cache si présent.
+    """Embeddings des documents (ou des passages), depuis le cache si présent.
 
+    `unit` range le découpage (`"document"` ou `"passages-{taille}-{chevauchement}"`,
+    EXE-92) : changer de découpage ne réutilise jamais l'entrée d'un autre.
     `compute_fn` n'est appelé qu'en cas d'absence du cache. Retourne
     (embeddings, cache_hit).
     """
     path = document_embeddings_cache_path(
-        cache_dir, dataset_hash, model_name, max_seq_length
+        cache_dir, dataset_hash, model_name, max_seq_length, unit
     )
     if path.exists():
         data = np.load(path, allow_pickle=False)
@@ -98,15 +105,19 @@ def get_ranking(
     top_k: int,
     split: str,
     compute_fn: Callable[[], list[dict[str, Any]]],
+    unit: str = "document",
 ) -> tuple[list[dict[str, Any]], bool]:
     """Classement de premier étage par requête, depuis le cache si présent.
 
+    `unit` range le classement comme `document_embeddings_cache_path` (EXE-92) :
+    pour les passages, inclut aussi le regroupement (`max`/`sum`, N) puisqu'il
+    déterminent le classement final, contrairement aux embeddings.
     `compute_fn` n'est appelé qu'en cas d'absence du cache (aucune similarité
     recalculée sur un hit). Retourne (ranking, cache_hit) ; chaque élément de
     `ranking` est {"query_id", "query_text", "retrieved": [...]}.
     """
     path = ranking_cache_path(
-        cache_dir, dataset_hash, model_name, max_seq_length, top_k, split
+        cache_dir, dataset_hash, model_name, max_seq_length, top_k, split, unit
     )
     if path.exists():
         print(f"  [cache classement] trouvé ({path}) — aucune similarité recalculée.")

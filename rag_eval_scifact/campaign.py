@@ -201,12 +201,14 @@ def run_campaign(
     truncated_pct: float = 0.0,
     avg_retrieval_latency_ms: float = 0.0,
     indexing_duration_seconds: float = 0.0,
+    n_passages: float = 0.0,
 ) -> dict:
     """Calcule les métriques d'un run déjà retrievé et écrit ses artefacts de campagne.
 
     `truncated_pct`, `avg_retrieval_latency_ms` et `indexing_duration_seconds`
     viennent de `retrieve_campaign` (EXE-90) : ce module ne charge aucun modèle,
-    il ne fait que les reporter. La part par bucket v1 (`compute_bucket_found_at_10`)
+    il ne fait que les reporter. `n_passages` (EXE-92) vaut 0 pour un run
+    unité document. La part par bucket v1 (`compute_bucket_found_at_10`)
     est calculée ici, à partir de `V1_BUCKETS_PATH` (lecture seule).
     """
     metrics = compute_aggregate_metrics(results, qrels)
@@ -216,6 +218,7 @@ def run_campaign(
         "truncated_pct": truncated_pct,
         "avg_retrieval_latency_ms": avg_retrieval_latency_ms,
         "indexing_duration_seconds": indexing_duration_seconds,
+        "n_passages": n_passages,
     }
     run_data = build_run_artifact(
         campagne,

@@ -13,3 +13,12 @@ runs:
       - retriever.model=sentence-transformers/all-MiniLM-L6-v2
       - retriever.max_seq_length=256
       - rerank=null
+  - run_name: dense-minilm-passages-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - rerank=null
