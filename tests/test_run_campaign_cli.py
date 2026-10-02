@@ -72,7 +72,15 @@ def test_multirun_produces_two_runs_two_files_two_mlflow_runs(
     )
     monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
     monkeypatch.setattr(
-        sys, "argv", ["run_campaign.py", "--multirun", "campagne=dev", "top_k=10,20"]
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "--multirun",
+            "campagne=dev",
+            "top_k=10,20",
+            "tracing=false",
+        ],
     )
 
     if GlobalHydra().is_initialized():
@@ -89,3 +97,54 @@ def test_multirun_produces_two_runs_two_files_two_mlflow_runs(
     assert experiment is not None
     runs = client.search_runs([experiment.experiment_id])
     assert len(runs) == 2
+
+
+# ---------------------------------------------------------------------------
+# Critère 6 (EXE-89) — tracing=false désactive les traces, métriques inchangées
+# ---------------------------------------------------------------------------
+
+
+def test_tracing_false_writes_no_trace_and_keeps_metrics_identical(
+    _isolated_cli, monkeypatch
+):
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "Titre D1", "text": ""}],
+    )
+
+    for tracing_value, run_name in [
+        ("true", "with-tracing"),
+        ("false", "without-tracing"),
+    ]:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_campaign.py",
+                "campagne=dev",
+                f"run_name={run_name}",
+                f"tracing={tracing_value}",
+            ],
+        )
+        if GlobalHydra().is_initialized():
+            GlobalHydra.instance().clear()
+        run_campaign_module._cli()
+
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name("dev")
+    runs = {r.info.run_name: r for r in client.search_runs([experiment.experiment_id])}
+
+    traces_with = mlflow.search_traces(
+        run_id=runs["with-tracing"].info.run_id, return_type="list"
+    )
+    traces_without = mlflow.search_traces(
+        run_id=runs["without-tracing"].info.run_id, return_type="list"
+    )
+    assert len(traces_with) == 1
+    assert len(traces_without) == 0
+    assert runs["with-tracing"].data.metrics == runs["without-tracing"].data.metrics

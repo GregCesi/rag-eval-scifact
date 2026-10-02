@@ -20,7 +20,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from rag_eval_scifact.campaign import run_campaign
-from rag_eval_scifact.mlflow_tracking import log_campaign_run
+from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
+from rag_eval_scifact.mlflow_tracking import log_campaign_run, log_query_traces
 from rag_eval_scifact.retrieve import retrieve_campaign
 from rag_eval_scifact.run_output import get_token_counts
 
@@ -67,6 +68,14 @@ def main(cfg: DictConfig) -> None:
         json_path=outcome["json_path"],
     )
 
+    n_traces = 0
+    if cfg.tracing:
+        titles = {doc["_id"]: doc["title"] for doc in load_corpus(CORPUS_PATH)}
+        log_query_traces(
+            run_id=mlflow_run_id, results=results, qrels=qrels, titles=titles
+        )
+        n_traces = len(results)
+
     print("\n" + "=" * 60)
     print(
         f"  RUN DE CAMPAGNE — {cfg.campagne}/{cfg.run_name} — {run_date.isoformat(timespec='seconds')}"
@@ -79,6 +88,11 @@ def main(cfg: DictConfig) -> None:
     print(f"  JSON  : {outcome['json_path']}")
     print("  TABLE : RESULTS.md (ligne ajoutée)")
     print(f"  MLflow: expérience '{cfg.campagne}', run {mlflow_run_id}")
+    print(
+        f"  Traces: {n_traces} requêtes tracées"
+        if cfg.tracing
+        else "  Traces: désactivées (tracing=false)"
+    )
     print("=" * 60)
     print("\n  Rappel : commiter les artefacts (run non commité = run inexistant)")
 

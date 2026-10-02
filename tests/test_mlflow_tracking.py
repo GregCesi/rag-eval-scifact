@@ -15,10 +15,12 @@ from pathlib import Path
 
 import mlflow
 import pytest
+from mlflow.entities import SpanType
 from mlflow.tracking import MlflowClient
 
 from rag_eval_scifact import mlflow_tracking
-from rag_eval_scifact.mlflow_tracking import log_campaign_run
+from rag_eval_scifact.mlflow_tracking import log_campaign_run, log_query_traces
+from rag_eval_scifact.retrieve import RetrievalResult
 
 CONFIG = {
     "campagne": "campagne-test",
@@ -149,3 +151,128 @@ def test_default_tracking_uri_is_sqlite_mlflow_db_at_repo_root():
 
 def test_no_mlflow_allow_file_store_env_var_is_set():
     assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
+# ---------------------------------------------------------------------------
+# EXE-89 — une trace MLflow par requête, rattachée au run
+# ---------------------------------------------------------------------------
+
+
+def _log_run(tmp_path) -> str:
+    json_path = _write_artifact(tmp_path)
+    return log_campaign_run("campagne-test", "run-1", CONFIG, METRICS, json_path)
+
+
+# Critère 1 — exactement une trace par requête, retrouvable par l'identifiant du run.
+
+
+def test_each_query_result_produces_one_trace_searchable_by_run_id(tmp_path):
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id=f"q{i}",
+            query_text=f"claim {i}",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+        for i in range(3)
+    ]
+    qrels = {f"q{i}": {"d1"} for i in range(3)}
+
+    log_query_traces(run_id, results, qrels, titles={"d1": "Titre D1"})
+
+    traces = mlflow.search_traces(run_id=run_id, return_type="list")
+    assert len(traces) == 3
+
+
+# Critère 2 — l'entrée de la trace porte l'identifiant et le texte du claim.
+
+
+def test_trace_input_carries_claim_id_and_text(tmp_path):
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id="q0",
+            query_text="0-dimensional biomaterials show inductive properties.",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+    qrels = {"q0": {"d1"}}
+
+    log_query_traces(run_id, results, qrels, titles={"d1": "Titre D1"})
+
+    trace = mlflow.search_traces(run_id=run_id, return_type="list")[0]
+    assert trace.data.spans[0].inputs == {
+        "query_id": "q0",
+        "query_text": "0-dimensional biomaterials show inductive properties.",
+    }
+
+
+# Critère 3 — une étape de type retriever liste les 10 premiers documents
+# (identifiant, titre, rang, score), même quand le classement en contient plus.
+
+
+def test_trace_has_a_retriever_step_with_the_top_10_ranked_docs(tmp_path):
+    run_id = _log_run(tmp_path)
+    retrieved = [
+        {"doc_id": f"d{i}", "rank": i, "score": round(1.0 - i * 0.01, 2)}
+        for i in range(1, 16)
+    ]
+    results = [RetrievalResult(query_id="q0", query_text="claim", retrieved=retrieved)]
+    qrels = {"q0": {"d1"}}
+    titles = {f"d{i}": f"Titre {i}" for i in range(1, 16)}
+
+    log_query_traces(run_id, results, qrels, titles)
+
+    span = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans[0]
+    assert span.span_type == SpanType.RETRIEVER
+    top10 = span.outputs["retrieved_top10"]
+    assert len(top10) == 10
+    assert top10[0] == {"doc_id": "d1", "title": "Titre 1", "rank": 1, "score": 0.99}
+    assert [d["doc_id"] for d in top10] == [f"d{i}" for i in range(1, 11)]
+
+
+# Critère 4 — docs attendus (identifiants + titres) et rang du premier dans le
+# top 100, ou son absence quand aucun document attendu n'y figure.
+
+
+def test_trace_carries_expected_docs_and_best_rank_when_found(tmp_path):
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id="q0",
+            query_text="claim",
+            retrieved=[
+                {"doc_id": "d1", "rank": 1, "score": 0.9},
+                {"doc_id": "d2", "rank": 2, "score": 0.8},
+            ],
+        )
+    ]
+    qrels = {"q0": {"d2"}}
+    titles = {"d1": "T1", "d2": "T2"}
+
+    log_query_traces(run_id, results, qrels, titles)
+
+    span = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans[0]
+    assert span.get_attribute("expected_docs") == [{"doc_id": "d2", "title": "T2"}]
+    assert span.get_attribute("best_rank_in_top_100") == 2
+
+
+def test_trace_marks_absence_when_expected_doc_outside_top_100(tmp_path):
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id="48",
+            query_text="claim 48",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.9}],
+        )
+    ]
+    qrels = {"48": {"13734012"}}
+    titles = {"d1": "T1", "13734012": "Titre attendu absent"}
+
+    log_query_traces(run_id, results, qrels, titles)
+
+    span = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans[0]
+    assert span.get_attribute("expected_docs") == [
+        {"doc_id": "13734012", "title": "Titre attendu absent"}
+    ]
+    assert span.get_attribute("best_rank_in_top_100") is None

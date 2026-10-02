@@ -21,6 +21,11 @@ rerank: null
 split: test
 top_k: 100
 
+# Une trace MLflow par requête (claim, top-10 remonté, docs attendus, rang du
+# premier attendu dans le top 100). Désactivable : avec tracing=false, le run
+# n'écrit aucune trace (EXE-89).
+tracing: true
+
 # Cache des calculs lourds (embeddings de documents, classement de premier étage),
 # hors du dépôt. Rangé par dataset_hash, modèle et fenêtre : changer l'un des trois
 # ne réutilise jamais l'entrée d'un autre.
