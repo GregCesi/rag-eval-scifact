@@ -86,7 +86,10 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 | `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (lanceur Hydra standard). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Plusieurs stratégies en une commande : `python -m rag_eval_scifact.run_campaign --multirun top_k=10,20`. Aide et valeurs surchargeables : `--help`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`, et le run est journalisé dans MLflow (expérience = campagne). Les embeddings de documents et le classement de premier étage sont mis en cache sous `cache_dir` (défaut `~/.cache/rag-eval-scifact`) : un run identique ne recalcule ni l'un ni l'autre. |
 | `mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5001` | Ouvre l'interface MLflow (http://127.0.0.1:5001) sur le tracking SQLite local `mlflow.db`. Pour relire une requête d'un run, ouvrir ce run puis son onglet **Traces** : une trace par requête (claim, top-10 remonté, docs attendus, rang du premier attendu dans le top 100 ou son absence) ; désactivable via `tracing=false`. |
 | `python -m rag_eval_scifact.compare_runs <run_a> <run_b>` | Compare deux runs de campagne (`.json` ou `.json.gz`) par test de randomisation apparié (nDCG@10 et MRR, codé à la main). Options : `--metric`, `--n-permutations`, `--seed`. |
-| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow et de la comparaison de runs. |
+| `python -m rag_eval_scifact.run_grid --list` | Affiche les combinaisons déclarées dans `conf/grid/v2-grid.yaml` (une par ligne, nom de run lisible) puis leur nombre, sans rien lancer. |
+| `python -m rag_eval_scifact.run_grid` | Lance chaque combinaison de `conf/grid/v2-grid.yaml` comme un run de la campagne `v2-grid` (`--campagne <nom>` pour cibler une autre campagne, ex. `dev`). Refuse de lancer `v2-grid` tant que `results/v2-grid/PREDICTION.md` n'est pas dans le dernier commit. Relancée sur une campagne interrompue, saute les combinaisons dont le fichier de résultats existe déjà et le dit. |
+| `python -m rag_eval_scifact.run_report <campagne>` | Écrit `results/<campagne>/RAPPORT.md` : tableau des runs de la campagne trié par nDCG@10 décroissant, avec les 6 métriques, l'écart et la p-value du test apparié face à `results/v1-rejeu/baseline`, la part par bucket v1, la part tronquée, la latence et la durée d'indexation. |
+| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow, de la comparaison de runs, de la grille v2-grid et du rapport de campagne. |
 | `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
 | `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. |
 
@@ -95,6 +98,8 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 ```
 conf/
   config.yaml     # Config Hydra par défaut (reproduit v1)
+  grid/
+    v2-grid.yaml   # Grille déclarative : une entrée = une combinaison déjà réalisable
 rag_eval_scifact/
   ingest.py        # Ingestion corpus -> ChromaDB
   retrieve.py      # Retrieval dense cosinus exact (top-k paramétrable)
@@ -108,6 +113,10 @@ rag_eval_scifact/
   stats.py         # Test de randomisation apparié (fait-main)
   compare.py       # Charge deux runs et les compare via stats.py
   compare_runs.py  # Point d'entrée CLI de comparaison de deux runs
+  grid.py          # Lecture de la grille déclarative + détection des runs déjà faits
+  run_grid.py      # Point d'entrée CLI de la grille (mode liste / lancement)
+  report.py        # Tableau d'une campagne face à la référence v1-rejeu/baseline
+  run_report.py    # Point d'entrée CLI du rapport de campagne
 tests/
   test_metrics.py  # Tests unitaires métriques
   test_campaign.py # Tests des artefacts de campagne
@@ -117,6 +126,9 @@ tests/
   test_cache.py    # Tests du cache (embeddings, classement de premier étage)
   test_retrieve_campaign.py # Tests du retrieval de campagne (cache embarqué)
   test_run_campaign_cli.py  # Tests du lanceur Hydra (--help, --multirun)
+  test_grid.py     # Tests de la grille déclarative et de la détection de runs faits
+  test_run_grid.py # Tests du CLI de grille (mode liste, lancement, garde, reprise)
+  test_report.py   # Tests du rapport de campagne (tri, écart, p-value, régénération)
 data/scifact/      # Données BEIR brutes (non versionnées)
 chroma_data/       # Index ChromaDB (non versionné)
 results/           # results/v1-*.json (run v1 historique) + results/<campagne>/<run>.json.gz

@@ -1,0 +1,15 @@
+# Grille v2-grid : une entrée = une combinaison "déjà réalisable dans le code"
+# (.claude/rules/methodologie.md). Jamais une combinaison dont le code n'existe
+# pas encore. Les fiches suivantes (EXE-92 à EXE-96) ajoutent leurs combinaisons
+# ici au fur et à mesure, sans toucher rag_eval_scifact/grid.py ni run_grid.py.
+#
+# `overrides` : surcharges Hydra (syntaxe `clé=valeur`) appliquées par-dessus
+# conf/config.yaml. `run_name` est le nom lisible affiché par le mode liste et
+# utilisé pour les artefacts du run (results/<campagne>/<run_name>-<date>.json.gz).
+runs:
+  - run_name: dense-minilm-256-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=sentence-transformers/all-MiniLM-L6-v2
+      - retriever.max_seq_length=256
+      - rerank=null
