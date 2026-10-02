@@ -385,3 +385,46 @@ def test_non_hybrid_trace_has_no_child_retriever_step(tmp_path):
 
     spans = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans
     assert len(spans) == 1
+
+
+# ---------------------------------------------------------------------------
+# EXE-96 critère 5 — une étape reranker montre les 10 premiers documents
+# après reclassement
+# ---------------------------------------------------------------------------
+
+
+def test_trace_has_a_reranker_step_with_the_top_10_reranked_docs(tmp_path):
+    run_id = _log_run(tmp_path)
+    retrieved = [
+        {"doc_id": f"d{i}", "rank": i, "score": round(1.0 - i * 0.01, 2)}
+        for i in range(1, 12)
+    ]
+    results = [RetrievalResult(query_id="q0", query_text="claim", retrieved=retrieved)]
+    qrels = {"q0": {"d1"}}
+    titles = {f"d{i}": f"Titre {i}" for i in range(1, 12)}
+
+    log_query_traces(run_id, results, qrels, titles, reranked=True)
+
+    spans = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans
+    rerank_span = next(s for s in spans if s.name == "rerank-q0")
+    assert rerank_span.span_type == SpanType.RERANKER
+    top10 = rerank_span.outputs["retrieved_top10"]
+    assert len(top10) == 10
+    assert [d["doc_id"] for d in top10] == [f"d{i}" for i in range(1, 11)]
+
+
+def test_no_reranker_step_when_reranked_is_false_by_default(tmp_path):
+    run_id = _log_run(tmp_path)
+    results = [
+        RetrievalResult(
+            query_id="q0",
+            query_text="claim",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.9}],
+        )
+    ]
+    qrels = {"q0": {"d1"}}
+
+    log_query_traces(run_id, results, qrels, titles={"d1": "T1"})
+
+    spans = mlflow.search_traces(run_id=run_id, return_type="list")[0].data.spans
+    assert len(spans) == 1

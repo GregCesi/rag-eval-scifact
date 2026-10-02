@@ -91,11 +91,14 @@ def test_v2_grid_declares_the_bm25_passages_combo_no_rerank():
     assert cfg.rerank is None
 
 
-def test_v2_grid_declares_exactly_seventeen_combos():
+def test_v2_grid_declares_exactly_seventeen_combos_without_reranker():
     combos = load_grid_combos()
 
-    assert len(combos) == 17
-    assert {c["run_name"] for c in combos} == {
+    sans_reranker = {
+        c["run_name"] for c in combos if c["run_name"].endswith("sans-reranker")
+    }
+    assert len(sans_reranker) == 17
+    assert sans_reranker == {
         "dense-minilm-256-sans-reranker",
         "dense-minilm-passages-sans-reranker",
         "bm25-document-sans-reranker",
@@ -114,6 +117,43 @@ def test_v2_grid_declares_exactly_seventeen_combos():
         "hybrid-qwen3-passages-union-sans-reranker",
         "hybrid-qwen3-passages-rrf-sans-reranker",
     }
+
+
+# ---------------------------------------------------------------------------
+# EXE-96 critère 7 — chaque combinaison obtient sa jumelle avec reranker :
+# 34 combinaisons déclarées, toutes distinctes.
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_exactly_thirty_four_combos_all_distinct():
+    combos = load_grid_combos()
+    run_names = [c["run_name"] for c in combos]
+
+    assert len(run_names) == 34
+    assert len(set(run_names)) == 34  # toutes distinctes
+
+    sans_reranker = {n for n in run_names if n.endswith("sans-reranker")}
+    avec_reranker = {n for n in run_names if n.endswith("avec-reranker")}
+    assert len(sans_reranker) == 17
+    assert len(avec_reranker) == 17
+    # Chaque combinaison "sans-reranker" a exactement sa jumelle "avec-reranker".
+    assert {n[: -len("sans-reranker")] for n in sans_reranker} == {
+        n[: -len("avec-reranker")] for n in avec_reranker
+    }
+
+
+def test_v2_grid_reranker_twin_overrides_only_the_reranker_setting():
+    combos = load_grid_combos()
+    sans = next(c for c in combos if c["run_name"] == "dense-minilm-256-sans-reranker")
+    avec = next(c for c in combos if c["run_name"] == "dense-minilm-256-avec-reranker")
+
+    cfg_sans = _compose_combo(sans)
+    cfg_avec = _compose_combo(avec)
+
+    assert cfg_sans.rerank is None
+    assert cfg_avec.rerank.name == "cross-encoder"
+    # Le reste de la config (retriever) est identique entre les deux jumelles.
+    assert cfg_sans.retriever == cfg_avec.retriever
 
 
 # ---------------------------------------------------------------------------

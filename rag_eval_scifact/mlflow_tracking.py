@@ -96,6 +96,7 @@ def log_query_traces(
     qrels: dict[str, set[str]],
     titles: dict[str, str],
     sub_rankings: dict[str, list[RetrievalResult]] | None = None,
+    reranked: bool = False,
 ) -> None:
     """Journalise une trace MLflow par requête, rattachée à `run_id` (EXE-89).
 
@@ -111,6 +112,12 @@ def log_query_traces(
     fusion — le span existant ci-dessous, qui porte déjà le classement final.
     `None` (défaut, run non hybride) : aucune étape enfant, comportement
     inchangé.
+
+    `reranked` (EXE-96 critère 5) : `True` quand un reranker a reclassé
+    `results` avant cet appel — ajoute une étape enfant de type `RERANKER`
+    montrant les 10 premiers documents après reclassement (`r.retrieved`,
+    déjà dans son ordre final). `False` (défaut, aucun reranker) : aucune
+    étape ajoutée, comportement inchangé.
     """
     sub_rankings_by_query: dict[str, dict[str, RetrievalResult]] = {}
     for name, ranking in (sub_rankings or {}).items():
@@ -139,6 +146,15 @@ def log_query_traces(
                                 sub_result.retrieved, titles
                             )
                         }
+                    )
+
+            if reranked:
+                with mlflow.start_span(
+                    name=f"rerank-{r.query_id}",
+                    span_type=SpanType.RERANKER,
+                ) as rerank_span:
+                    rerank_span.set_outputs(
+                        {"retrieved_top10": _top10_payload(r.retrieved, titles)}
                     )
 
             span.set_outputs({"retrieved_top10": _top10_payload(r.retrieved, titles)})

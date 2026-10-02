@@ -139,3 +139,40 @@ def test_qwen_model_and_query_instruction_are_overridable():
         cfg.retriever.query_instruction
         == "Instruct: retrieve relevant documents. Query: "
     )
+
+
+# ---------------------------------------------------------------------------
+# EXE-96 critère 1 — reranker sélectionnable, modèle et top_n configurables
+# ---------------------------------------------------------------------------
+
+
+def test_rerank_defaults_to_none_with_cross_encoder_values_ready():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.rerank.name == "none"
+    assert cfg.rerank.model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    assert cfg.rerank.top_n == 100
+
+
+def test_rerank_is_selectable_and_its_parameters_are_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(
+            config_name="config",
+            overrides=[
+                "rerank.name=cross-encoder",
+                "rerank.model=other-cross-encoder",
+                "rerank.top_n=50",
+            ],
+        )
+
+    assert cfg.rerank.name == "cross-encoder"
+    assert cfg.rerank.model == "other-cross-encoder"
+    assert cfg.rerank.top_n == 50
+
+
+def test_rerank_null_override_still_disables_it():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config", overrides=["rerank=null"])
+
+    assert cfg.rerank is None

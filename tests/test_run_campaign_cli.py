@@ -197,3 +197,150 @@ def test_tracing_false_writes_no_trace_and_keeps_metrics_identical(
     assert len(traces_with) == 1
     assert len(traces_without) == 0
     assert runs["with-tracing"].data.metrics == runs["without-tracing"].data.metrics
+
+
+# ---------------------------------------------------------------------------
+# EXE-96 — reranker : config, cache du premier étage, trace, durée
+# ---------------------------------------------------------------------------
+
+
+def test_rerank_not_invoked_when_disabled_by_default(_isolated_cli, monkeypatch):
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    calls: list[int] = []
+    monkeypatch.setattr(
+        run_campaign_module,
+        "rerank_campaign_results",
+        lambda *a, **kw: calls.append(1),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["run_campaign.py", "campagne=dev", "tracing=false"]
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    assert calls == []
+
+
+def test_rerank_setting_does_not_change_the_retrieve_campaign_call(
+    _isolated_cli, monkeypatch
+):
+    """Critère 4 : le premier étage ne dépend jamais du réglage du reranker —
+    `retrieve_campaign` reçoit exactement les mêmes arguments, reranker actif
+    ou non, donc sert la même entrée de cache."""
+    calls: list[dict] = []
+
+    def tracking_retrieve_campaign(**kwargs):
+        calls.append(kwargs)
+        return _fake_retrieve_campaign(**kwargs)
+
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", tracking_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "T", "text": "x"}],
+    )
+    monkeypatch.setattr(
+        run_campaign_module,
+        "rerank_campaign_results",
+        lambda results, doc_texts, **kw: (results, 0.01),
+    )
+
+    for rerank_value, run_name in [
+        ("none", "no-rerank"),
+        ("cross-encoder", "with-rerank"),
+    ]:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "run_campaign.py",
+                "campagne=dev",
+                f"run_name={run_name}",
+                f"rerank.name={rerank_value}",
+                "tracing=false",
+            ],
+        )
+        if GlobalHydra().is_initialized():
+            GlobalHydra.instance().clear()
+        run_campaign_module._cli()
+
+    assert calls[0] == calls[1]
+
+
+def test_rerank_pairs_use_title_plus_text_at_document_level(_isolated_cli, monkeypatch):
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "Titre D1", "text": "Texte D1"}],
+    )
+    seen_doc_texts: dict = {}
+
+    def _capture_rerank(results, doc_texts, **kwargs):
+        seen_doc_texts.update(doc_texts)
+        return results, 0.1
+
+    monkeypatch.setattr(run_campaign_module, "rerank_campaign_results", _capture_rerank)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "rerank.name=cross-encoder",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    assert seen_doc_texts == {"d1": "Titre D1 Texte D1"}
+
+
+def test_rerank_cross_encoder_duration_is_logged_in_mlflow(_isolated_cli, monkeypatch):
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "T1", "text": ""}],
+    )
+    monkeypatch.setattr(
+        run_campaign_module,
+        "rerank_campaign_results",
+        lambda results, doc_texts, **kwargs: (results, 2.5),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "rerank.name=cross-encoder",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name("dev")
+    run = client.search_runs([experiment.experiment_id])[0]
+    assert run.data.metrics["rerank_duration_seconds"] == pytest.approx(2.5)

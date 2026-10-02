@@ -22,6 +22,7 @@ from omegaconf import DictConfig, OmegaConf
 from rag_eval_scifact.campaign import run_campaign
 from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
 from rag_eval_scifact.mlflow_tracking import log_campaign_run, log_query_traces
+from rag_eval_scifact.rerank import rerank_campaign_results
 from rag_eval_scifact.retrieve import retrieve_campaign
 from rag_eval_scifact.run_output import get_token_counts
 
@@ -56,6 +57,20 @@ def main(cfg: DictConfig) -> None:
         batch_size=cfg.retriever.batch_size,
     )
 
+    rerank_enabled = cfg.rerank is not None and cfg.rerank.name == "cross-encoder"
+    rerank_duration_seconds = 0.0
+    if rerank_enabled:
+        doc_texts = {
+            doc["_id"]: doc["title"] + " " + doc["text"]
+            for doc in load_corpus(CORPUS_PATH)
+        }
+        results, rerank_duration_seconds = rerank_campaign_results(
+            results,
+            doc_texts,
+            top_n=cfg.rerank.top_n,
+            model_name=cfg.rerank.model,
+        )
+
     all_relevant_ids: set[str] = set()
     for relevant_set in qrels.values():
         all_relevant_ids.update(relevant_set)
@@ -75,6 +90,7 @@ def main(cfg: DictConfig) -> None:
         indexing_duration_seconds=stats["indexing_duration_seconds"],
         n_passages=stats.get("n_passages", 0.0),
         device=stats["device"],
+        rerank_duration_seconds=rerank_duration_seconds,
     )
 
     mlflow_run_id = log_campaign_run(
@@ -96,6 +112,7 @@ def main(cfg: DictConfig) -> None:
             qrels=qrels,
             titles=titles,
             sub_rankings=stats.get("sub_rankings"),
+            reranked=rerank_enabled,
         )
         n_traces = len(results)
 

@@ -42,7 +42,15 @@ retriever:
   batch_size: 64
 
 fusion: null
-rerank: null
+# Reranker cross-encoder (EXE-96) : relit chaque (claim, document) ensemble
+# pour reclasser les `top_n` premiers documents d'un classement déjà construit.
+# `name` : "none" (défaut, aucun reclassement) ou "cross-encoder" ; `model` et
+# `top_n` ne s'appliquent qu'à "cross-encoder". `rerank=null` (grille v2-grid,
+# variantes "sans-reranker") a le même effet que `rerank.name=none`.
+rerank:
+  name: none
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_n: 100
 split: test
 top_k: 100
 

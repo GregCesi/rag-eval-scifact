@@ -356,6 +356,40 @@ def test_n_passages_is_written_to_extended_metrics_when_provided(_isolate_artifa
     assert outcome["run_data"]["extended_metrics"]["n_passages"] == 18042
 
 
+# ---------------------------------------------------------------------------
+# EXE-96 critère 6 — durée du reclassement portée jusqu'au JSON du run
+# ---------------------------------------------------------------------------
+
+
+def test_rerank_duration_is_written_to_extended_metrics_when_provided(
+    _isolate_artifacts,
+):
+    results, qrels = _fake_results()
+
+    outcome = run_campaign(
+        "campagne-test",
+        "run-1",
+        _base_config(),
+        results,
+        qrels,
+        "sha256:abc",
+        RUN_DATE,
+        rerank_duration_seconds=4.5,
+    )
+
+    assert outcome["run_data"]["extended_metrics"]["rerank_duration_seconds"] == 4.5
+
+
+def test_rerank_duration_defaults_to_zero_when_not_provided(_isolate_artifacts):
+    results, qrels = _fake_results()
+
+    outcome = run_campaign(
+        "campagne-test", "run-1", _base_config(), results, qrels, "sha256:abc", RUN_DATE
+    )
+
+    assert outcome["run_data"]["extended_metrics"]["rerank_duration_seconds"] == 0.0
+
+
 def test_extended_metrics_do_not_change_results_md_format(_isolate_artifacts):
     results, qrels = _fake_results()
 

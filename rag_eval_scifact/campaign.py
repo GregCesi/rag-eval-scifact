@@ -207,13 +207,15 @@ def run_campaign(
     indexing_duration_seconds: float = 0.0,
     n_passages: float = 0.0,
     device: str = "cpu",
+    rerank_duration_seconds: float = 0.0,
 ) -> dict:
     """Calcule les métriques d'un run déjà retrievé et écrit ses artefacts de campagne.
 
     `truncated_pct`, `avg_retrieval_latency_ms`, `indexing_duration_seconds`
     et `device` viennent de `retrieve_campaign` (EXE-90, EXE-94) : ce module ne
     charge aucun modèle, il ne fait que les reporter. `n_passages` (EXE-92)
-    vaut 0 pour un run unité document. La part par bucket v1
+    vaut 0 pour un run unité document. `rerank_duration_seconds` (EXE-96
+    critère 6) vaut 0 quand le reranker est désactivé. La part par bucket v1
     (`compute_bucket_found_at_10`) est calculée ici, à partir de
     `V1_BUCKETS_PATH` (lecture seule).
     """
@@ -225,6 +227,7 @@ def run_campaign(
         "avg_retrieval_latency_ms": avg_retrieval_latency_ms,
         "indexing_duration_seconds": indexing_duration_seconds,
         "n_passages": n_passages,
+        "rerank_duration_seconds": rerank_duration_seconds,
     }
     run_data = build_run_artifact(
         campagne,
