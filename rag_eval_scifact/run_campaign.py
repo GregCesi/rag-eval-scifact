@@ -47,6 +47,9 @@ def main(cfg: DictConfig) -> None:
         chunk_overlap=cfg.retriever.chunk_overlap,
         grouping=cfg.retriever.grouping,
         grouping_top_n=cfg.retriever.grouping_top_n,
+        retriever_name=cfg.retriever.name,
+        bm25_k1=cfg.retriever.bm25_k1,
+        bm25_b=cfg.retriever.bm25_b,
     )
 
     all_relevant_ids: set[str] = set()

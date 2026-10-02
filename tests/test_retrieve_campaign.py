@@ -7,6 +7,8 @@ n'est chargé. Chaque test pointe `cache_dir` vers `tmp_path`, jamais le cache r
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
 from rag_eval_scifact.retrieve import retrieve_campaign
@@ -407,6 +409,159 @@ def test_document_unit_is_unaffected_by_a_passages_run_sharing_the_cache_dir(tmp
 
     assert len(document_calls) == 2
     assert len(results[0].retrieved) == TOP_K
+
+
+# ---------------------------------------------------------------------------
+# EXE-93 — retriever_name="bm25" : lexical, jamais mis en cache
+# ---------------------------------------------------------------------------
+
+
+def test_bm25_document_unit_indexes_the_whole_corpus_without_truncation(tmp_path):
+    results, qrels, _, stats = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+    )
+
+    assert stats["truncated_pct"] == 0.0
+    assert len(results) == len(qrels) == 300
+    assert len(results[0].retrieved) == TOP_K
+
+
+def test_bm25_rare_term_query_ranks_the_matching_document_first(tmp_path):
+    corpus_path = tmp_path / "corpus.jsonl"
+    queries_path = tmp_path / "queries.jsonl"
+    qrels_path = tmp_path / "qrels.tsv"
+
+    corpus_path.write_text(
+        "\n".join(
+            json.dumps(doc)
+            for doc in [
+                {"_id": "d1", "title": "", "text": "the cat sat on the mat"},
+                {"_id": "d2", "title": "", "text": "the dog ran in the park"},
+                {
+                    "_id": "d3",
+                    "title": "",
+                    "text": "a rare xylophone solo echoed through the hall",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(
+        json.dumps({"_id": "q1", "text": "xylophone"}), encoding="utf-8"
+    )
+    qrels_path.write_text("query-id\tcorpus-id\tscore\nq1\td3\t1\n", encoding="utf-8")
+
+    results, _, _, _ = retrieve_campaign(
+        top_k=3,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        corpus_path=corpus_path,
+        queries_path=queries_path,
+        qrels_path=qrels_path,
+    )
+
+    assert results[0].retrieved[0]["doc_id"] == "d3"
+
+
+def test_bm25_passages_unit_uses_the_same_chunking_and_grouping_as_dense(tmp_path):
+    results, _, _, stats = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=PASSAGES_WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        unit="passages",
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        offsets_fn=_char_offsets_fn(),
+    )
+
+    for r in results:
+        doc_ids = [d["doc_id"] for d in r.retrieved]
+        assert len(doc_ids) <= TOP_K
+        assert len(doc_ids) == len(set(doc_ids))
+    assert stats["n_passages"] >= 5183
+
+
+def test_bm25_passages_unit_produces_the_same_passage_count_as_dense(tmp_path):
+    _, _, _, dense_stats = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=PASSAGES_WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        unit="passages",
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        embedder=_fake_embedder([]),
+        offsets_fn=_char_offsets_fn(),
+    )
+
+    _, _, _, bm25_stats = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=PASSAGES_WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        unit="passages",
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        offsets_fn=_char_offsets_fn(),
+    )
+
+    assert bm25_stats["n_passages"] == dense_stats["n_passages"]
+
+
+def test_bm25_does_not_call_the_embedder(tmp_path):
+    calls: list[int] = []
+
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        embedder=_fake_embedder(calls),
+    )
+
+    assert calls == []
+
+
+def test_changing_bm25_k1_changes_the_results(tmp_path):
+    results_default, _, _, _ = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        bm25_k1=1.2,
+    )
+
+    results_other, _, _, _ = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        retriever_name="bm25",
+        bm25_k1=100.0,
+    )
+
+    assert [r.retrieved for r in results_default] != [
+        r.retrieved for r in results_other
+    ]
 
 
 def test_indexing_duration_is_zero_when_ranking_cache_serves(tmp_path):

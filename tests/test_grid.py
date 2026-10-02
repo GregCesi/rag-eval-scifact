@@ -3,7 +3,8 @@
 N'importe aucun module d'embedding : `load_grid_combos` lit un YAML via OmegaConf,
 `has_existing_result` ne fait que lister des fichiers (EXE-91, critères 1 et 5 ;
 EXE-92, critère 8 — la combinaison dense/MiniLM/passages s'ajoute à côté de
-celle du document entier, sans toucher ce module).
+celle du document entier ; EXE-93, critère 6 — les deux combinaisons BM25 —
+sans toucher ce module).
 """
 
 from __future__ import annotations
@@ -61,13 +62,44 @@ def test_v2_grid_declares_the_passages_combo_dense_minilm_passages_no_rerank():
     assert cfg.rerank is None
 
 
-def test_v2_grid_declares_exactly_two_combos():
+# ---------------------------------------------------------------------------
+# EXE-93 critère 6 — les deux combinaisons BM25, sans reranker
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_declares_the_bm25_document_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(c for c in combos if c["run_name"] == "bm25-document-sans-reranker")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "bm25"
+    assert cfg.retriever.unit == "document"
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_the_bm25_passages_combo_no_rerank():
+    combos = load_grid_combos()
+    combo = next(c for c in combos if c["run_name"] == "bm25-passages-sans-reranker")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.name == "bm25"
+    assert cfg.retriever.unit == "passages"
+    assert cfg.retriever.chunk_size == 128
+    assert cfg.retriever.chunk_overlap == 32
+    assert cfg.rerank is None
+
+
+def test_v2_grid_declares_exactly_four_combos():
     combos = load_grid_combos()
 
-    assert len(combos) == 2
+    assert len(combos) == 4
     assert {c["run_name"] for c in combos} == {
         "dense-minilm-256-sans-reranker",
         "dense-minilm-passages-sans-reranker",
+        "bm25-document-sans-reranker",
+        "bm25-passages-sans-reranker",
     }
 
 

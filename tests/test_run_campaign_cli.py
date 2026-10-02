@@ -108,6 +108,46 @@ def test_multirun_produces_two_runs_two_files_two_mlflow_runs(
 
 
 # ---------------------------------------------------------------------------
+# EXE-93 — retriever.name=bm25 se propage jusqu'à retrieve_campaign
+# ---------------------------------------------------------------------------
+
+
+def test_retriever_name_bm25_and_its_params_reach_retrieve_campaign(
+    _isolated_cli, monkeypatch
+):
+    calls: list[dict] = []
+
+    def tracking_retrieve_campaign(**kwargs):
+        calls.append(kwargs)
+        return _fake_retrieve_campaign(**kwargs)
+
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", tracking_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "retriever.name=bm25",
+            "retriever.bm25_k1=2.0",
+            "retriever.bm25_b=0.5",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    assert calls[0]["retriever_name"] == "bm25"
+    assert calls[0]["bm25_k1"] == 2.0
+    assert calls[0]["bm25_b"] == 0.5
+
+
+# ---------------------------------------------------------------------------
 # Critère 6 (EXE-89) — tracing=false désactive les traces, métriques inchangées
 # ---------------------------------------------------------------------------
 

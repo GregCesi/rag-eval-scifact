@@ -1,4 +1,4 @@
-"""Tests des valeurs de configuration du découpage en passages (EXE-92, critère 1).
+"""Tests des valeurs de configuration du retriever (EXE-92 critère 1 ; EXE-93 critère 1).
 
 Compose `conf/config.yaml` via Hydra, sans rien lancer ni charger de modèle.
 """
@@ -39,3 +39,33 @@ def test_unit_and_chunking_are_overridable_from_the_command_line():
     assert cfg.retriever.chunk_overlap == 16
     assert cfg.retriever.grouping == "sum"
     assert cfg.retriever.grouping_top_n == 500
+
+
+# ---------------------------------------------------------------------------
+# EXE-93 critère 1 — BM25 sélectionnable, k1 et b configurables
+# ---------------------------------------------------------------------------
+
+
+def test_bm25_defaults_are_elasticsearch_defaults():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.retriever.name == "dense"
+    assert cfg.retriever.bm25_k1 == 1.2
+    assert cfg.retriever.bm25_b == 0.75
+
+
+def test_bm25_is_selectable_and_its_parameters_are_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(
+            config_name="config",
+            overrides=[
+                "retriever.name=bm25",
+                "retriever.bm25_k1=2.0",
+                "retriever.bm25_b=0.5",
+            ],
+        )
+
+    assert cfg.retriever.name == "bm25"
+    assert cfg.retriever.bm25_k1 == 2.0
+    assert cfg.retriever.bm25_b == 0.5

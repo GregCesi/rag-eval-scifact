@@ -22,6 +22,7 @@ import chromadb
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from rag_eval_scifact.bm25 import build_bm25_index, score_queries
 from rag_eval_scifact.cache import get_document_embeddings, get_ranking
 from rag_eval_scifact.chunking import chunk_text, default_offsets_fn
 from rag_eval_scifact.ingest import CORPUS_PATH, compute_dataset_hash, load_corpus
@@ -86,22 +87,17 @@ def load_test_queries(
     return queries, qrels
 
 
-def _rank_top_k(
+def _top_k_from_matrix(
     queries: list[dict],
     doc_ids: list[str],
-    doc_embeddings: np.ndarray,
-    query_embeddings: np.ndarray,
+    sim_matrix: np.ndarray,
     top_k: int,
 ) -> list[RetrievalResult]:
-    """Cosinus brute-force (L2-normalise puis produit scalaire) + top-k par requête."""
-    doc_norms = np.linalg.norm(doc_embeddings, axis=1, keepdims=True)
-    doc_embeddings_norm = doc_embeddings / doc_norms
+    """Top-k par requête à partir d'une matrice (n_requêtes, n_docs) de scores déjà calculés.
 
-    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
-    query_embeddings_norm = query_embeddings / query_norms
-
-    sim_matrix = query_embeddings_norm @ doc_embeddings_norm.T
-
+    Partagé par le dense (cosinus) et BM25 (EXE-93) : seul le calcul de
+    `sim_matrix` diffère entre les deux.
+    """
     results: list[RetrievalResult] = []
     for i, query in enumerate(queries):
         scores = sim_matrix[i]
@@ -120,6 +116,24 @@ def _rank_top_k(
             )
         )
     return results
+
+
+def _rank_top_k(
+    queries: list[dict],
+    doc_ids: list[str],
+    doc_embeddings: np.ndarray,
+    query_embeddings: np.ndarray,
+    top_k: int,
+) -> list[RetrievalResult]:
+    """Cosinus brute-force (L2-normalise puis produit scalaire) + top-k par requête."""
+    doc_norms = np.linalg.norm(doc_embeddings, axis=1, keepdims=True)
+    doc_embeddings_norm = doc_embeddings / doc_norms
+
+    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
+    query_embeddings_norm = query_embeddings / query_norms
+
+    sim_matrix = query_embeddings_norm @ doc_embeddings_norm.T
+    return _top_k_from_matrix(queries, doc_ids, sim_matrix, top_k)
 
 
 def group_passage_scores(
@@ -156,29 +170,21 @@ def group_passage_scores(
     return doc_scores
 
 
-def _rank_top_k_grouped(
+def _top_k_grouped_from_matrix(
     queries: list[dict],
-    passage_ids: list[str],
     passage_doc_ids: list[str],
-    passage_embeddings: np.ndarray,
-    query_embeddings: np.ndarray,
+    sim_matrix: np.ndarray,
     top_k: int,
     grouping: str,
     grouping_top_n: int,
 ) -> list[RetrievalResult]:
-    """Cosinus brute-force sur les passages, puis regroupement au niveau document.
+    """Regroupement passage -> document à partir d'une matrice de scores déjà calculés.
 
-    La liste classée retournée ne contient que des identifiants de documents,
+    Partagé par le dense (cosinus) et BM25 (EXE-93 critère 3 : même
+    regroupement que le dense) ; seul le calcul de `sim_matrix` diffère. La
+    liste classée retournée ne contient que des identifiants de documents,
     sans doublon (clés d'un dict), top_k au plus.
     """
-    passage_norms = np.linalg.norm(passage_embeddings, axis=1, keepdims=True)
-    passage_embeddings_norm = passage_embeddings / passage_norms
-
-    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
-    query_embeddings_norm = query_embeddings / query_norms
-
-    sim_matrix = query_embeddings_norm @ passage_embeddings_norm.T
-
     results: list[RetrievalResult] = []
     for i, query in enumerate(queries):
         doc_scores = group_passage_scores(
@@ -197,6 +203,29 @@ def _rank_top_k_grouped(
             )
         )
     return results
+
+
+def _rank_top_k_grouped(
+    queries: list[dict],
+    passage_ids: list[str],
+    passage_doc_ids: list[str],
+    passage_embeddings: np.ndarray,
+    query_embeddings: np.ndarray,
+    top_k: int,
+    grouping: str,
+    grouping_top_n: int,
+) -> list[RetrievalResult]:
+    """Cosinus brute-force sur les passages, puis regroupement au niveau document."""
+    passage_norms = np.linalg.norm(passage_embeddings, axis=1, keepdims=True)
+    passage_embeddings_norm = passage_embeddings / passage_norms
+
+    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
+    query_embeddings_norm = query_embeddings / query_norms
+
+    sim_matrix = query_embeddings_norm @ passage_embeddings_norm.T
+    return _top_k_grouped_from_matrix(
+        queries, passage_doc_ids, sim_matrix, top_k, grouping, grouping_top_n
+    )
 
 
 def retrieve(
@@ -313,6 +342,9 @@ def retrieve_campaign(
     chunk_overlap: int = 32,
     grouping: str = "max",
     grouping_top_n: int = 1000,
+    retriever_name: str = "dense",
+    bm25_k1: float = 1.2,
+    bm25_b: float = 0.75,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
     token_counter: Callable[[list[str]], list[int]] | None = None,
     offsets_fn: Callable[[str], list[tuple[int, int]]] | None = None,
@@ -335,6 +367,12 @@ def retrieve_campaign(
     tokens avec `chunk_overlap` de chevauchement (`rag_eval_scifact.chunking`),
     le retrieval se fait sur les passages puis se regroupe au niveau document
     (`grouping` : `"max"` ou `"sum"`, voir `group_passage_scores`).
+
+    `retriever_name` (EXE-93) : `"dense"` (défaut) ou `"bm25"` — lexical,
+    scores calculés par `rag_eval_scifact.bm25` (`bm25_k1`, `bm25_b`), jamais
+    mis en cache (indexation rapide, aucun modèle chargé). Sur `unit`
+    `"passages"`, BM25 réutilise le même découpage (`chunk_text`) et le même
+    regroupement (`group_passage_scores`) que le dense.
 
     En plus du triplet historique, retourne un dict `stats` (EXE-90, EXE-92) :
     - `truncated_pct` : part des documents (unité document) ou des passages
@@ -359,7 +397,62 @@ def retrieve_campaign(
     timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
     stats: dict[str, float] = {}
 
-    if unit == "passages":
+    if retriever_name == "bm25":
+        query_texts = [q["text"] for q in queries]
+
+        if unit == "passages":
+            offsets = offsets_fn or default_offsets_fn(model_name)
+            passages = [
+                passage
+                for doc_id, text in zip(doc_ids, doc_texts)
+                for passage in chunk_text(
+                    doc_id, text, chunk_size, chunk_overlap, offsets
+                )
+            ]
+            passage_doc_ids = [p.doc_id for p in passages]
+            passage_texts = [p.text for p in passages]
+            stats["truncated_pct"] = compute_truncated_pct(
+                [p.token_count for p in passages], max_seq_length
+            )
+            stats["n_passages"] = float(len(passages))
+
+            start = time.perf_counter()
+            index = build_bm25_index(passage_texts, bm25_k1, bm25_b)
+            timings["indexing_duration_seconds"] = time.perf_counter() - start
+
+            retrieval_start = time.perf_counter()
+            sim_matrix = score_queries(index, query_texts)
+            ranked = _top_k_grouped_from_matrix(
+                queries, passage_doc_ids, sim_matrix, top_k, grouping, grouping_top_n
+            )
+            timings["retrieval_duration_seconds"] = (
+                time.perf_counter() - retrieval_start
+            )
+        else:
+            # BM25 indexe title + text sans fenêtre de tokens : jamais tronqué
+            # (EXE-93 critère 2).
+            stats["truncated_pct"] = 0.0
+
+            start = time.perf_counter()
+            index = build_bm25_index(doc_texts, bm25_k1, bm25_b)
+            timings["indexing_duration_seconds"] = time.perf_counter() - start
+
+            retrieval_start = time.perf_counter()
+            sim_matrix = score_queries(index, query_texts)
+            ranked = _top_k_from_matrix(queries, doc_ids, sim_matrix, top_k)
+            timings["retrieval_duration_seconds"] = (
+                time.perf_counter() - retrieval_start
+            )
+
+        ranking = [
+            {
+                "query_id": r.query_id,
+                "query_text": r.query_text,
+                "retrieved": r.retrieved,
+            }
+            for r in ranked
+        ]
+    elif unit == "passages":
         offsets = offsets_fn or default_offsets_fn(model_name)
         passages = [
             passage

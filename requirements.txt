@@ -5,3 +5,4 @@
 -e .[dashboard]
 hydra-core
 mlflow
+rank_bm25

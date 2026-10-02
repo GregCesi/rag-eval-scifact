@@ -22,3 +22,15 @@ runs:
       - retriever.chunk_size=128
       - retriever.chunk_overlap=32
       - rerank=null
+  - run_name: bm25-document-sans-reranker
+    overrides:
+      - retriever.name=bm25
+      - retriever.unit=document
+      - rerank=null
+  - run_name: bm25-passages-sans-reranker
+    overrides:
+      - retriever.name=bm25
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - rerank=null
