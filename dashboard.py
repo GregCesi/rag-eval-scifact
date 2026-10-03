@@ -12,6 +12,18 @@ import plotly.graph_objects as go
 import streamlit as st
 from transformers import AutoTokenizer
 
+from rag_eval_scifact.compare import load_run as load_run_file
+from rag_eval_scifact.run_diff import (
+    FILTER_LABELS,
+    NOT_FOUND_RANK,
+    changed_claims,
+    compare_claims,
+    filter_claims,
+    list_campaign_dirs,
+    list_campaign_run_files,
+    rank_comparison_counts,
+)
+
 RESULTS_DIR = Path("results")
 CORPUS_PATH = Path("data/scifact/corpus.jsonl")
 
@@ -20,6 +32,12 @@ CORPUS_PATH = Path("data/scifact/corpus.jsonl")
 def load_run(path: Path) -> dict:
     with open(path) as f:
         return json.load(f)
+
+
+@st.cache_data
+def load_campaign_run(path: Path) -> dict:
+    """Charge un run de campagne (`results/<campagne>/<run>.json.gz`)."""
+    return load_run_file(path)
 
 
 @st.cache_data
@@ -99,9 +117,17 @@ def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
         rank = m["best_rank"]
         expected = q["expected_docs"]
         token_count = expected[0]["token_count"]
-        top1_score = q["retrieved_top100"][0]["score"] if q["retrieved_top100"] else None
-        relevant_score = q["retrieved_top100"][rank - 1]["score"] if rank and rank <= 100 else None
-        score_gap = (top1_score - relevant_score) if (top1_score and relevant_score and rank != 1) else None
+        top1_score = (
+            q["retrieved_top100"][0]["score"] if q["retrieved_top100"] else None
+        )
+        relevant_score = (
+            q["retrieved_top100"][rank - 1]["score"] if rank and rank <= 100 else None
+        )
+        score_gap = (
+            (top1_score - relevant_score)
+            if (top1_score and relevant_score and rank != 1)
+            else None
+        )
 
         # Catégorisation lisible
         if rank is None:
@@ -119,22 +145,24 @@ def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
 
         troncature = "Tronqué" if token_count > 256 else "Complet"
 
-        rows.append({
-            "query_id": q["query_id"],
-            "query_text": q["query_text"],
-            "best_rank": rank,
-            "category": category,
-            "token_count": token_count,
-            "troncature": troncature,
-            "nb_docs_attendus": len(expected),
-            "top1_score": top1_score,
-            "relevant_score": relevant_score,
-            "score_gap": score_gap,
-            "found@1": m["found@1"],
-            "found@5": m["found@5"],
-            "found@10": m["found@10"],
-            "found@100": m["found@100"],
-        })
+        rows.append(
+            {
+                "query_id": q["query_id"],
+                "query_text": q["query_text"],
+                "best_rank": rank,
+                "category": category,
+                "token_count": token_count,
+                "troncature": troncature,
+                "nb_docs_attendus": len(expected),
+                "top1_score": top1_score,
+                "relevant_score": relevant_score,
+                "score_gap": score_gap,
+                "found@1": m["found@1"],
+                "found@5": m["found@5"],
+                "found@10": m["found@10"],
+                "found@100": m["found@100"],
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -155,11 +183,21 @@ def main():
 
     cfg = data["config"]
     st.sidebar.markdown(f"**Modèle** : `{cfg['model']}`")
-    st.sidebar.markdown(f"**Dim** : {cfg['dim']}  |  **Max seq** : {cfg['max_seq_length']}")
+    st.sidebar.markdown(
+        f"**Dim** : {cfg['dim']}  |  **Max seq** : {cfg['max_seq_length']}"
+    )
     st.sidebar.markdown(f"**Date** : {data['date']}")
     st.sidebar.divider()
 
-    page = st.sidebar.radio("Navigation", ["Vue d'ensemble", "Exploration interactive", "Analyse d'erreurs"])
+    page = st.sidebar.radio(
+        "Navigation",
+        [
+            "Vue d'ensemble",
+            "Exploration interactive",
+            "Analyse d'erreurs",
+            "Comparer deux runs",
+        ],
+    )
 
     # Charger les buckets si disponibles
     buckets_path = RESULTS_DIR / "v1-buckets.json"
@@ -177,6 +215,8 @@ def main():
         page_explore(df, queries_by_id, corpus)
     elif page == "Analyse d'erreurs":
         page_errors(df, queries_by_id, corpus, buckets_data, annotations)
+    elif page == "Comparer deux runs":
+        page_compare(buckets_data, corpus)
 
 
 # ─────────────────────────────────────────────
@@ -188,10 +228,17 @@ def page_overview(data: dict, df: pd.DataFrame):
     # Métriques
     metrics = data["metrics"]
     cols = st.columns(6)
-    for col, (label, key) in zip(cols, [
-        ("Recall@1", "recall@1"), ("Recall@5", "recall@5"), ("Recall@10", "recall@10"),
-        ("Recall@100", "recall@100"), ("nDCG@10", "ndcg@10"), ("MRR", "mrr"),
-    ]):
+    for col, (label, key) in zip(
+        cols,
+        [
+            ("Recall@1", "recall@1"),
+            ("Recall@5", "recall@5"),
+            ("Recall@10", "recall@10"),
+            ("Recall@100", "recall@100"),
+            ("nDCG@10", "ndcg@10"),
+            ("MRR", "mrr"),
+        ],
+    ):
         col.metric(label, f"{metrics[key]:.3f}")
 
     st.divider()
@@ -199,16 +246,37 @@ def page_overview(data: dict, df: pd.DataFrame):
 
     # Distribution des rangs
     with col1:
-        cat_order = ["Rang 1", "Rang 2-5", "Rang 6-10", "Rang 11-50", "Rang 51-100", "Non trouvé"]
-        cat_colors = {"Rang 1": "#2ecc71", "Rang 2-5": "#27ae60", "Rang 6-10": "#f1c40f",
-                      "Rang 11-50": "#e67e22", "Rang 51-100": "#e74c3c", "Non trouvé": "#7f8c8d"}
+        cat_order = [
+            "Rang 1",
+            "Rang 2-5",
+            "Rang 6-10",
+            "Rang 11-50",
+            "Rang 51-100",
+            "Non trouvé",
+        ]
+        cat_colors = {
+            "Rang 1": "#2ecc71",
+            "Rang 2-5": "#27ae60",
+            "Rang 6-10": "#f1c40f",
+            "Rang 11-50": "#e67e22",
+            "Rang 51-100": "#e74c3c",
+            "Non trouvé": "#7f8c8d",
+        }
         counts = df["category"].value_counts().reindex(cat_order, fill_value=0)
-        fig = go.Figure(data=[go.Bar(
-            x=counts.index, y=counts.values,
-            marker_color=[cat_colors[c] for c in counts.index],
-            text=counts.values, textposition="auto",
-        )])
-        fig.update_layout(title="Distribution des rangs", yaxis_title="Requêtes", height=350)
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=counts.index,
+                    y=counts.values,
+                    marker_color=[cat_colors[c] for c in counts.index],
+                    text=counts.values,
+                    textposition="auto",
+                )
+            ]
+        )
+        fig.update_layout(
+            title="Distribution des rangs", yaxis_title="Requêtes", height=350
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     # Recall par bucket de longueur
@@ -216,39 +284,77 @@ def page_overview(data: dict, df: pd.DataFrame):
         bins = [0, 128, 256, 512, 9999]
         labels = ["≤128", "129-256", "257-512", ">512"]
         df["len_bucket"] = pd.cut(df["token_count"], bins=bins, labels=labels)
-        recall_data = df.groupby("len_bucket", observed=True).agg(
-            n=("query_id", "count"),
-            R1=("found@1", "mean"),
-            R10=("found@10", "mean"),
-            R100=("found@100", "mean"),
-        ).reset_index()
+        recall_data = (
+            df.groupby("len_bucket", observed=True)
+            .agg(
+                n=("query_id", "count"),
+                R1=("found@1", "mean"),
+                R10=("found@10", "mean"),
+                R100=("found@100", "mean"),
+            )
+            .reset_index()
+        )
         fig = go.Figure()
-        for metric, name in [("R1", "Recall@1"), ("R10", "Recall@10"), ("R100", "Recall@100")]:
-            fig.add_trace(go.Bar(
-                name=name, x=recall_data["len_bucket"], y=recall_data[metric],
-                text=[f"{v:.0%}" for v in recall_data[metric]], textposition="auto",
-            ))
-        fig.update_layout(barmode="group", title="Recall par longueur de doc", yaxis_title="Recall", height=350)
+        for metric, name in [
+            ("R1", "Recall@1"),
+            ("R10", "Recall@10"),
+            ("R100", "Recall@100"),
+        ]:
+            fig.add_trace(
+                go.Bar(
+                    name=name,
+                    x=recall_data["len_bucket"],
+                    y=recall_data[metric],
+                    text=[f"{v:.0%}" for v in recall_data[metric]],
+                    textposition="auto",
+                )
+            )
+        fig.update_layout(
+            barmode="group",
+            title="Recall par longueur de doc",
+            yaxis_title="Recall",
+            height=350,
+        )
         for _, row in recall_data.iterrows():
-            fig.add_annotation(x=row["len_bucket"], y=-0.08, text=f"n={row['n']}", showarrow=False,
-                               yref="paper", font=dict(size=10, color="gray"))
+            fig.add_annotation(
+                x=row["len_bucket"],
+                y=-0.08,
+                text=f"n={row['n']}",
+                showarrow=False,
+                yref="paper",
+                font={"size": 10, "color": "gray"},
+            )
         st.plotly_chart(fig, use_container_width=True)
 
     # Scores
     col1, col2 = st.columns(2)
     with col1:
-        fig = px.histogram(df, x="top1_score", nbins=30, title="Score cosinus du rang 1",
-                           labels={"top1_score": "Score cosinus"})
+        fig = px.histogram(
+            df,
+            x="top1_score",
+            nbins=30,
+            title="Score cosinus du rang 1",
+            labels={"top1_score": "Score cosinus"},
+        )
         fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         mask = df["relevant_score"].notna()
-        fig = px.scatter(df[mask], x="top1_score", y="relevant_score",
-                         title="Score rang 1 vs Score doc pertinent",
-                         labels={"top1_score": "Score rang 1", "relevant_score": "Score doc pertinent"},
-                         opacity=0.5)
-        fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dash", color="gray"))
+        fig = px.scatter(
+            df[mask],
+            x="top1_score",
+            y="relevant_score",
+            title="Score rang 1 vs Score doc pertinent",
+            labels={
+                "top1_score": "Score rang 1",
+                "relevant_score": "Score doc pertinent",
+            },
+            opacity=0.5,
+        )
+        fig.add_shape(
+            type="line", x0=0, y0=0, x1=1, y1=1, line={"dash": "dash", "color": "gray"}
+        )
         fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
 
@@ -265,22 +371,40 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
     st.sidebar.markdown("### Filtres")
 
     # Filtre par catégorie de rang
-    all_cats = ["Rang 1", "Rang 2-5", "Rang 6-10", "Rang 11-50", "Rang 51-100", "Non trouvé"]
-    selected_cats = st.sidebar.multiselect("Catégorie de rang", all_cats, default=all_cats)
+    all_cats = [
+        "Rang 1",
+        "Rang 2-5",
+        "Rang 6-10",
+        "Rang 11-50",
+        "Rang 51-100",
+        "Non trouvé",
+    ]
+    selected_cats = st.sidebar.multiselect(
+        "Catégorie de rang", all_cats, default=all_cats
+    )
 
     # Filtre troncature
-    trunc_filter = st.sidebar.radio("Troncature", ["Tous", "Tronqué (>256)", "Complet (≤256)"], index=0)
+    trunc_filter = st.sidebar.radio(
+        "Troncature", ["Tous", "Tronqué (>256)", "Complet (≤256)"], index=0
+    )
 
     # Filtre score gap
-    score_gap_filter = st.sidebar.checkbox("Seulement les 'presque' (score gap < 0.02)", value=False)
+    score_gap_filter = st.sidebar.checkbox(
+        "Seulement les 'presque' (score gap < 0.02)", value=False
+    )
 
     # Filtre rang numérique
-    rank_range = st.sidebar.slider("Rang (None = 101)", min_value=1, max_value=101, value=(1, 101))
+    rank_range = st.sidebar.slider(
+        "Rang (None = 101)", min_value=1, max_value=101, value=(1, 101)
+    )
 
     # Filtre longueur doc
-    tc_range = st.sidebar.slider("Tokens du doc attendu", min_value=int(df["token_count"].min()),
-                                  max_value=int(df["token_count"].max()),
-                                  value=(int(df["token_count"].min()), int(df["token_count"].max())))
+    tc_range = st.sidebar.slider(
+        "Tokens du doc attendu",
+        min_value=int(df["token_count"].min()),
+        max_value=int(df["token_count"].max()),
+        value=(int(df["token_count"].min()), int(df["token_count"].max())),
+    )
 
     # --- Appliquer les filtres ---
     filtered = df[df["category"].isin(selected_cats)].copy()
@@ -289,21 +413,34 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
     elif trunc_filter == "Complet (≤256)":
         filtered = filtered[filtered["troncature"] == "Complet"]
     if score_gap_filter:
-        filtered = filtered[(filtered["score_gap"].notna()) & (filtered["score_gap"] < 0.02)]
+        filtered = filtered[
+            (filtered["score_gap"].notna()) & (filtered["score_gap"] < 0.02)
+        ]
 
     # Rang : on remplace None par 101 pour le slider
     filtered["_rank_sortable"] = filtered["best_rank"].fillna(101).astype(int)
-    filtered = filtered[(filtered["_rank_sortable"] >= rank_range[0]) & (filtered["_rank_sortable"] <= rank_range[1])]
-    filtered = filtered[(filtered["token_count"] >= tc_range[0]) & (filtered["token_count"] <= tc_range[1])]
+    filtered = filtered[
+        (filtered["_rank_sortable"] >= rank_range[0])
+        & (filtered["_rank_sortable"] <= rank_range[1])
+    ]
+    filtered = filtered[
+        (filtered["token_count"] >= tc_range[0])
+        & (filtered["token_count"] <= tc_range[1])
+    ]
 
     # --- Tri ---
-    sort_col = st.selectbox("Trier par", ["best_rank", "token_count", "top1_score", "score_gap", "query_id"],
-                            index=0)
+    sort_col = st.selectbox(
+        "Trier par",
+        ["best_rank", "token_count", "top1_score", "score_gap", "query_id"],
+        index=0,
+    )
     sort_asc = st.checkbox("Ordre croissant", value=True)
     if sort_col == "best_rank":
         filtered = filtered.sort_values("_rank_sortable", ascending=sort_asc)
     else:
-        filtered = filtered.sort_values(sort_col, ascending=sort_asc, na_position="last")
+        filtered = filtered.sort_values(
+            sort_col, ascending=sort_asc, na_position="last"
+        )
 
     # --- Stats du filtre ---
     st.markdown(f"**{len(filtered)}** requêtes correspondent aux filtres")
@@ -321,10 +458,18 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
         scatter_df = filtered.copy()
         scatter_df["rank_display"] = scatter_df["best_rank"].fillna(101)
         fig = px.scatter(
-            scatter_df, x="token_count", y="rank_display",
+            scatter_df,
+            x="token_count",
+            y="rank_display",
             color="category",
-            color_discrete_map={"Rang 1": "#2ecc71", "Rang 2-5": "#27ae60", "Rang 6-10": "#f1c40f",
-                                "Rang 11-50": "#e67e22", "Rang 51-100": "#e74c3c", "Non trouvé": "#7f8c8d"},
+            color_discrete_map={
+                "Rang 1": "#2ecc71",
+                "Rang 2-5": "#27ae60",
+                "Rang 6-10": "#f1c40f",
+                "Rang 11-50": "#e67e22",
+                "Rang 51-100": "#e74c3c",
+                "Non trouvé": "#7f8c8d",
+            },
             hover_data=["query_id", "query_text", "top1_score"],
             labels={"token_count": "Tokens doc", "rank_display": "Rang"},
             title=f"Vue filtrée — {len(filtered)} requêtes",
@@ -336,8 +481,17 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
         st.plotly_chart(fig, use_container_width=True)
 
     # --- Tableau ---
-    display_cols = ["query_id", "query_text", "category", "best_rank", "token_count",
-                    "troncature", "top1_score", "relevant_score", "score_gap"]
+    display_cols = [
+        "query_id",
+        "query_text",
+        "category",
+        "best_rank",
+        "token_count",
+        "troncature",
+        "top1_score",
+        "relevant_score",
+        "score_gap",
+    ]
     st.dataframe(
         filtered[display_cols].reset_index(drop=True),
         use_container_width=True,
@@ -345,7 +499,9 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
         column_config={
             "query_text": st.column_config.TextColumn("Query", width="large"),
             "top1_score": st.column_config.NumberColumn("Score rang 1", format="%.4f"),
-            "relevant_score": st.column_config.NumberColumn("Score pertinent", format="%.4f"),
+            "relevant_score": st.column_config.NumberColumn(
+                "Score pertinent", format="%.4f"
+            ),
             "score_gap": st.column_config.NumberColumn("Ecart score", format="%.4f"),
         },
     )
@@ -355,8 +511,11 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
     st.subheader("Détail d'une requête")
     query_ids = filtered["query_id"].tolist()
     if query_ids:
-        chosen_id = st.selectbox("Sélectionner une requête", query_ids,
-                                  format_func=lambda qid: f"[{qid}] {queries_by_id[qid]['query_text'][:80]}")
+        chosen_id = st.selectbox(
+            "Sélectionner une requête",
+            query_ids,
+            format_func=lambda qid: f"[{qid}] {queries_by_id[qid]['query_text'][:80]}",
+        )
         render_query_detail(queries_by_id[chosen_id], corpus)
 
 
@@ -376,7 +535,9 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
 
     lines.append(f"## Query {q['query_id']}")
     lines.append(f"**Question** : {q['query_text']}")
-    lines.append(f"**Meilleur rang** : {rank if rank else 'NON TROUVE dans le top 100'}")
+    lines.append(
+        f"**Meilleur rang** : {rank if rank else 'NON TROUVE dans le top 100'}"
+    )
     lines.append("")
 
     lines.append("### Document(s) attendu(s)")
@@ -385,7 +546,9 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
         doc_data = corpus.get(ed["doc_id"], {})
         tc = ed["token_count"]
         status = "TRONQUE" if tc > 256 else "COMPLET"
-        lines.append(f"**{doc_data.get('title', '?')}** (`{ed['doc_id']}`, {tc} tokens, {status})")
+        lines.append(
+            f"**{doc_data.get('title', '?')}** (`{ed['doc_id']}`, {tc} tokens, {status})"
+        )
         lines.append("")
         lines.append(_text_with_cut(doc_data.get("text", "")))
         lines.append("")
@@ -395,7 +558,7 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
     for d in q["retrieved_top100"][:5]:
         doc_data = corpus.get(d["doc_id"], {})
         text = doc_data.get("text", "")
-        seen, lost = split_at_truncation(text)
+        _seen, lost = split_at_truncation(text)
         status = "TRONQUE" if lost else "COMPLET"
         hit = " ✅ PERTINENT" if d["doc_id"] in expected_ids else ""
         lines.append(
@@ -418,13 +581,20 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
 # ─────────────────────────────────────────────
 # PAGE 3 : ANALYSE D'ERREURS
 # ─────────────────────────────────────────────
-def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
-                buckets_data: dict | None, annotations: dict[str, dict[str, str]]):
+def page_errors(
+    df: pd.DataFrame,
+    queries_by_id: dict,
+    corpus: dict,
+    buckets_data: dict | None,
+    annotations: dict[str, dict[str, str]],
+):
     st.header("Analyse d'erreurs")
 
     if buckets_data is None:
-        st.warning("Fichier `results/v1-buckets.json` absent. "
-                   "Lancer `python scripts/extract_error_analysis.py` d'abord.")
+        st.warning(
+            "Fichier `results/v1-buckets.json` absent. "
+            "Lancer `python scripts/extract_error_analysis.py` d'abord."
+        )
         return
 
     # --- Construire les listes de queries par bucket ---
@@ -451,10 +621,13 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
         st.session_state._error_query_select = 0
         st.session_state.pop("show_export", None)
 
-    selected_idx = st.selectbox("Bucket", range(len(bucket_names)),
-                                format_func=lambda i: bucket_options[i],
-                                key="_error_bucket_select",
-                                on_change=_on_bucket_change)
+    selected_idx = st.selectbox(
+        "Bucket",
+        range(len(bucket_names)),
+        format_func=lambda i: bucket_options[i],
+        key="_error_bucket_select",
+        on_change=_on_bucket_change,
+    )
     selected_bucket = bucket_names[selected_idx]
     query_ids = queries_by_bucket[selected_bucket]
 
@@ -497,10 +670,11 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
         st.button("Suiv >", use_container_width=True, on_click=_go_next)
     with col_select:
         st.selectbox(
-            "Query", range(len(query_ids)),
+            "Query",
+            range(len(query_ids)),
             index=current_idx,
             format_func=lambda i: (
-                f"[{i+1}/{len(query_ids)}] {query_ids[i]} — "
+                f"[{i + 1}/{len(query_ids)}] {query_ids[i]} — "
                 f"{queries_by_id[query_ids[i]]['query_text'][:70]}"
             ),
             key="_error_query_select",
@@ -515,10 +689,12 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
 
     # --- Annotation ---
     ann = annotations.get(qid, {})
-    new_cat = st.text_input("Categorie", value=ann.get("categorie", ""),
-                            key=f"ann_cat_{qid}")
-    new_note = st.text_area("Note", value=ann.get("note", ""),
-                            height=200, key=f"ann_note_{qid}")
+    new_cat = st.text_input(
+        "Categorie", value=ann.get("categorie", ""), key=f"ann_cat_{qid}"
+    )
+    new_note = st.text_area(
+        "Note", value=ann.get("note", ""), height=200, key=f"ann_note_{qid}"
+    )
     if st.button("Sauvegarder", key=f"ann_save_{qid}"):
         save_annotation(qid, new_cat.strip(), new_note.strip())
         st.toast(f"Annotation query {qid} sauvegardee")
@@ -526,8 +702,10 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
 
     # --- Infos bucket ---
     if bucket_info["best_rank"] is not None:
-        st.markdown(f"**Rang** : {bucket_info['best_rank']}  |  "
-                    f"**Score** : {bucket_info['score']:.4f}")
+        st.markdown(
+            f"**Rang** : {bucket_info['best_rank']}  |  "
+            f"**Score** : {bucket_info['score']:.4f}"
+        )
     else:
         st.markdown("**Rang** : aucun doc pertinent dans le top 100")
 
@@ -545,8 +723,14 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
             st.markdown(f"`{d['doc_id']}` — *non trouve dans le corpus*")
             continue
         truncated = d["token_count"] > max_seq
-        trunc_badge = f"  :orange[TRONQUE a ~{max_seq} tokens]" if truncated else "  :green[COMPLET]"
-        st.markdown(f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}")
+        trunc_badge = (
+            f"  :orange[TRONQUE a ~{max_seq} tokens]"
+            if truncated
+            else "  :green[COMPLET]"
+        )
+        st.markdown(
+            f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}"
+        )
         render_doc_text(doc_data["text"], key=f"err_expected_{d['doc_id']}")
 
     # --- Top-5 retrouve ---
@@ -575,6 +759,194 @@ def page_errors(df: pd.DataFrame, queries_by_id: dict, corpus: dict,
 
 
 # ─────────────────────────────────────────────
+# PAGE 4 : COMPARER DEUX RUNS
+# ─────────────────────────────────────────────
+METRIC_LABELS = [
+    ("Recall@1", "recall@1"),
+    ("Recall@5", "recall@5"),
+    ("Recall@10", "recall@10"),
+    ("Recall@100", "recall@100"),
+    ("nDCG@10", "ndcg@10"),
+    ("MRR", "mrr"),
+]
+
+
+def page_compare(buckets_data: dict | None, corpus: dict):
+    st.header("Comparer deux runs")
+
+    campaigns = list_campaign_dirs(RESULTS_DIR)
+    if not campaigns:
+        st.info(
+            "Aucune campagne (dossier avec des runs `*.json.gz`) trouvée sous results/."
+        )
+        return
+
+    campaign = st.selectbox("Campagne", campaigns, key="compare_campaign")
+    run_files = list_campaign_run_files(RESULTS_DIR, campaign)
+
+    if len(run_files) < 2:
+        st.info(f"La campagne « {campaign} » a moins de deux runs ({len(run_files)}).")
+        return
+
+    loaded_runs = [load_campaign_run(p) for p in run_files]
+    runs_by_name = {run["run_name"]: run for run in loaded_runs}
+    run_names = sorted(runs_by_name)
+
+    col_a, col_b = st.columns(2)
+    name_a = col_a.selectbox("Run A", run_names, index=0, key="compare_run_a")
+    name_b = col_b.selectbox(
+        "Run B", run_names, index=min(1, len(run_names) - 1), key="compare_run_b"
+    )
+    run_a, run_b = runs_by_name[name_a], runs_by_name[name_b]
+
+    st.subheader("Métriques")
+    metrics_df = pd.DataFrame(
+        [
+            {label: run_a["metrics"][key] for label, key in METRIC_LABELS},
+            {label: run_b["metrics"][key] for label, key in METRIC_LABELS},
+        ],
+        index=[f"A — {name_a}", f"B — {name_b}"],
+    )
+    st.dataframe(
+        metrics_df,
+        column_config={
+            label: st.column_config.NumberColumn(label, format="%.4f")
+            for label, _ in METRIC_LABELS
+        },
+    )
+
+    rows = compare_claims(run_a, run_b)
+    counts = rank_comparison_counts(rows)
+
+    st.subheader("Rang du meilleur document attendu, de A vers B")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Meilleur dans B", counts["better"])
+    c2.metric("Moins bon dans B", counts["worse"])
+    c3.metric("Identique", counts["same"])
+
+    st.subheader("Claims dont le rang change")
+    filter_choice = st.radio(
+        "Filtre",
+        ["Tous"] + list(FILTER_LABELS.values()),
+        horizontal=True,
+        key="compare_filter",
+    )
+    label_to_key = {v: k for k, v in FILTER_LABELS.items()}
+    display_rows = (
+        changed_claims(rows)
+        if filter_choice == "Tous"
+        else filter_claims(rows, label_to_key[filter_choice])
+    )
+
+    if not display_rows:
+        st.info("Aucun claim ne correspond à ce filtre.")
+        return
+
+    bucket_by_qid = (
+        {qid: info["bucket"] for qid, info in buckets_data["queries"].items()}
+        if buckets_data
+        else {}
+    )
+    table_df = pd.DataFrame(display_rows)
+    table_df["bucket_v1"] = table_df["query_id"].map(bucket_by_qid).fillna("—")
+    table_df["rank_diff"] = table_df["rank_b"].fillna(NOT_FOUND_RANK).astype(
+        int
+    ) - table_df["rank_a"].fillna(NOT_FOUND_RANK).astype(int)
+    sort_desc = st.checkbox(
+        "Trier par écart de rang absolu décroissant",
+        value=True,
+        key="compare_sort_desc",
+    )
+    table_df = table_df.reindex(
+        table_df["rank_diff"].abs().sort_values(ascending=not sort_desc).index
+    )
+
+    st.dataframe(
+        table_df[
+            ["query_id", "query_text", "rank_a", "rank_b", "bucket_v1", "rank_diff"]
+        ].reset_index(drop=True),
+        use_container_width=True,
+        height=350,
+        column_config={
+            "query_text": st.column_config.TextColumn("Claim", width="large"),
+            "rank_a": st.column_config.NumberColumn("Rang A"),
+            "rank_b": st.column_config.NumberColumn("Rang B"),
+            "bucket_v1": st.column_config.TextColumn("Bucket v1"),
+            "rank_diff": st.column_config.NumberColumn("Écart (B - A)"),
+        },
+    )
+
+    st.divider()
+    st.subheader("Détail d'un claim")
+    text_by_qid = {r["query_id"]: r["query_text"] for r in display_rows}
+    qids_available = table_df["query_id"].tolist()
+    chosen_qid = st.selectbox(
+        "Claim",
+        qids_available,
+        format_func=lambda qid: f"[{qid}] {text_by_qid[qid][:80]}",
+        key="compare_claim_select",
+    )
+    render_claim_comparison(chosen_qid, run_a, run_b, name_a, name_b, corpus)
+
+
+def render_claim_comparison(
+    qid: str, run_a: dict, run_b: dict, name_a: str, name_b: str, corpus: dict
+):
+    query_a = next(q for q in run_a["queries"] if q["query_id"] == qid)
+    query_b = next(q for q in run_b["queries"] if q["query_id"] == qid)
+
+    st.markdown("### Claim")
+    st.info(query_a["query_text"])
+
+    st.markdown("### Documents attendus")
+    for d in query_a["expected_docs"]:
+        doc_data = corpus.get(d["doc_id"], {})
+        st.markdown(f"**{doc_data.get('title', '?')}**  \n`{d['doc_id']}`")
+        with st.expander("Texte complet", key=f"compare_expected_{qid}_{d['doc_id']}"):
+            st.write(doc_data.get("text", ""))
+
+    expected_ids = {d["doc_id"] for d in query_a["expected_docs"]}
+    top10_a = query_a["retrieved_top100"][:10]
+    top10_b = query_b["retrieved_top100"][:10]
+    ids_a = {d["doc_id"] for d in top10_a}
+    ids_b = {d["doc_id"] for d in top10_b}
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f"#### A — {name_a}")
+        render_top10_side(
+            top10_a, expected_ids, ids_b, corpus, key_prefix=f"cmp_a_{qid}"
+        )
+    with col_b:
+        st.markdown(f"#### B — {name_b}")
+        render_top10_side(
+            top10_b, expected_ids, ids_a, corpus, key_prefix=f"cmp_b_{qid}"
+        )
+
+
+def render_top10_side(
+    docs: list[dict],
+    expected_ids: set[str],
+    other_side_ids: set[str],
+    corpus: dict,
+    key_prefix: str,
+):
+    for doc in docs:
+        doc_id = doc["doc_id"]
+        doc_data = corpus.get(doc_id, {})
+        title = doc_data.get("title", "?")
+        badges = ""
+        if doc_id in expected_ids:
+            badges += "  :white_check_mark: **attendu**"
+        if doc_id not in other_side_ids:
+            badges += "  :large_blue_circle: *absent de l'autre run*"
+        label = f"Rang {doc['rank']} — **{title}** — score {doc['score']:.4f}{badges}"
+        with st.expander(label, key=f"{key_prefix}_{doc_id}"):
+            st.markdown(f"`{doc_id}`")
+            st.write(doc_data.get("text", ""))
+
+
+# ─────────────────────────────────────────────
 # COMPOSANT : DÉTAIL D'UNE REQUÊTE
 # ─────────────────────────────────────────────
 def render_query_detail(q: dict, corpus: dict):
@@ -584,20 +956,30 @@ def render_query_detail(q: dict, corpus: dict):
     max_seq = 256  # config du run
 
     # ── Query ──
-    st.markdown(f"### Query")
+    st.markdown("### Query")
     st.info(q["query_text"])
 
     # ── Doc(s) attendu(s) ──
-    st.markdown(f"### Doc attendu  —  {'Rang ' + str(rank) if rank else 'Non trouvé dans le top 100'}")
+    st.markdown(
+        f"### Doc attendu  —  {'Rang ' + str(rank) if rank else 'Non trouvé dans le top 100'}"
+    )
     for d in q["expected_docs"]:
         doc_data = corpus.get(d["doc_id"])
         if doc_data:
             truncated = d["token_count"] > max_seq
-            trunc_badge = f"  :orange[TRONQUE a ~{max_seq} tokens]" if truncated else "  :green[COMPLET]"
-            st.markdown(f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}")
+            trunc_badge = (
+                f"  :orange[TRONQUE a ~{max_seq} tokens]"
+                if truncated
+                else "  :green[COMPLET]"
+            )
+            st.markdown(
+                f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}"
+            )
             render_doc_text(doc_data["text"], key=f"expected_{d['doc_id']}")
         else:
-            st.markdown(f"`{d['doc_id']}` ({d['token_count']} tok) — *texte non trouvé dans le corpus*")
+            st.markdown(
+                f"`{d['doc_id']}` ({d['token_count']} tok) — *texte non trouvé dans le corpus*"
+            )
 
     # ── Top retrieved ──
     st.markdown("### Top 10 retrieved")
@@ -627,7 +1009,7 @@ def render_doc_text(text: str, key: str):
         st.markdown(
             f'<div style="background:#1a2e1a; border-left:4px solid #2ecc71; '
             f'padding:12px; border-radius:4px; font-size:0.85em; line-height:1.5">'
-            f'{seen}</div>',
+            f"{seen}</div>",
             unsafe_allow_html=True,
         )
     else:
@@ -636,18 +1018,18 @@ def render_doc_text(text: str, key: str):
             f'<div style="font-size:0.85em; line-height:1.5; border-radius:4px; overflow:hidden">'
             # Partie vue
             f'<div style="background:#1a2e1a; border-left:4px solid #2ecc71; padding:12px">'
-            f'{seen}'
-            f'</div>'
+            f"{seen}"
+            f"</div>"
             # Séparateur
             f'<div style="background:#4a3000; padding:4px 12px; font-size:0.8em; font-weight:bold; '
             f'border-left:4px solid #e67e22">'
-            f'--- TRONCATURE (256 tokens) — ce qui suit n\'a PAS ete lu par le modele ---'
-            f'</div>'
+            f"--- TRONCATURE (256 tokens) — ce qui suit n'a PAS ete lu par le modele ---"
+            f"</div>"
             # Partie ignorée
             f'<div style="background:#2e1a1a; border-left:4px solid #e74c3c; padding:12px; opacity:0.7">'
-            f'{lost}'
-            f'</div>'
-            f'</div>',
+            f"{lost}"
+            f"</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 

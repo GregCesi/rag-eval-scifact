@@ -91,7 +91,7 @@ Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qr
 | `python -m rag_eval_scifact.run_report <campagne>` | Écrit `results/<campagne>/RAPPORT.md` : tableau des runs de la campagne trié par nDCG@10 décroissant, avec les 6 métriques, l'écart et la p-value du test apparié face à `results/v1-rejeu/baseline`, la part par bucket v1, la part tronquée, la latence et la durée d'indexation. |
 | `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow, de la comparaison de runs, de la grille v2-grid et du rapport de campagne. |
 | `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
-| `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. |
+| `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. Page **Comparer deux runs** : choisit une campagne (dossier de `results/` avec des runs au format campagne) puis deux de ses runs, et affiche leurs 6 métriques côte à côte, le nombre de claims où le meilleur rang d'un document attendu s'améliore / se dégrade / ne change pas entre les deux runs, la liste filtrable des claims dont le rang change, et pour un claim choisi le détail — documents attendus et top 10 de chaque run, côte à côte. |
 
 ## Structure
 
