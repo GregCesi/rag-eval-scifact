@@ -106,7 +106,8 @@ def split_at_truncation(text: str, max_tokens: int = 256) -> tuple[str, str]:
 
 
 def list_runs() -> list[Path]:
-    return sorted(RESULTS_DIR.glob("*.json"), reverse=True)
+    # Seuls les runs v1 : results/ contient aussi des annotations et des buckets en .json.
+    return sorted(RESULTS_DIR.glob("v1-dense-*.json"), reverse=True)
 
 
 def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
