@@ -19,9 +19,11 @@ from rag_eval_scifact.run_diff import (
     changed_claims,
     compare_claims,
     filter_claims,
+    find_claim,
     list_campaign_dirs,
     list_campaign_run_files,
     rank_comparison_counts,
+    unit_badge,
 )
 
 RESULTS_DIR = Path("results")
@@ -839,73 +841,134 @@ def page_compare(buckets_data: dict | None, corpus: dict):
         else filter_claims(rows, label_to_key[filter_choice])
     )
 
-    if not display_rows:
-        st.info("Aucun claim ne correspond à ce filtre.")
-        return
-
     bucket_by_qid = (
         {qid: info["bucket"] for qid, info in buckets_data["queries"].items()}
         if buckets_data
         else {}
     )
-    table_df = pd.DataFrame(display_rows)
-    table_df["bucket_v1"] = table_df["query_id"].map(bucket_by_qid).fillna("—")
-    table_df["rank_diff"] = table_df["rank_b"].fillna(NOT_FOUND_RANK).astype(
-        int
-    ) - table_df["rank_a"].fillna(NOT_FOUND_RANK).astype(int)
-    sort_desc = st.checkbox(
-        "Trier par écart de rang absolu décroissant",
-        value=True,
-        key="compare_sort_desc",
-    )
-    table_df = table_df.reindex(
-        table_df["rank_diff"].abs().sort_values(ascending=not sort_desc).index
-    )
 
-    st.dataframe(
-        table_df[
-            ["query_id", "query_text", "rank_a", "rank_b", "bucket_v1", "rank_diff"]
-        ].reset_index(drop=True),
-        use_container_width=True,
-        height=350,
-        column_config={
-            "query_text": st.column_config.TextColumn("Claim", width="large"),
-            "rank_a": st.column_config.NumberColumn("Rang A"),
-            "rank_b": st.column_config.NumberColumn("Rang B"),
-            "bucket_v1": st.column_config.TextColumn("Bucket v1"),
-            "rank_diff": st.column_config.NumberColumn("Écart (B - A)"),
-        },
-    )
+    if not display_rows:
+        st.info("Aucun claim ne correspond à ce filtre.")
+    else:
+        table_df = pd.DataFrame(display_rows)
+        table_df["bucket_v1"] = table_df["query_id"].map(bucket_by_qid).fillna("—")
+        table_df["rank_diff"] = table_df["rank_b"].fillna(NOT_FOUND_RANK).astype(
+            int
+        ) - table_df["rank_a"].fillna(NOT_FOUND_RANK).astype(int)
+        sort_desc = st.checkbox(
+            "Trier par écart de rang absolu décroissant",
+            value=True,
+            key="compare_sort_desc",
+        )
+        table_df = table_df.reindex(
+            table_df["rank_diff"].abs().sort_values(ascending=not sort_desc).index
+        )
+
+        st.dataframe(
+            table_df[
+                ["query_id", "query_text", "rank_a", "rank_b", "bucket_v1", "rank_diff"]
+            ].reset_index(drop=True),
+            use_container_width=True,
+            height=350,
+            column_config={
+                "query_text": st.column_config.TextColumn("Claim", width="large"),
+                "rank_a": st.column_config.NumberColumn("Rang A"),
+                "rank_b": st.column_config.NumberColumn("Rang B"),
+                "bucket_v1": st.column_config.TextColumn("Bucket v1"),
+                "rank_diff": st.column_config.NumberColumn("Écart (B - A)"),
+            },
+        )
 
     st.divider()
     st.subheader("Détail d'un claim")
     text_by_qid = {r["query_id"]: r["query_text"] for r in display_rows}
-    qids_available = table_df["query_id"].tolist()
-    chosen_qid = st.selectbox(
-        "Claim",
-        qids_available,
-        format_func=lambda qid: f"[{qid}] {text_by_qid[qid][:80]}",
-        key="compare_claim_select",
-    )
-    render_claim_comparison(chosen_qid, run_a, run_b, name_a, name_b, corpus)
+    qids_available = [r["query_id"] for r in display_rows]
+
+    col_number, col_select = st.columns([1, 3])
+    with col_number:
+        claim_number = st.text_input(
+            "Ouvrir un claim par son numéro",
+            key="compare_claim_number",
+        ).strip()
+    with col_select:
+        chosen_from_table = (
+            st.selectbox(
+                "Ou choisir dans le tableau filtré",
+                qids_available,
+                format_func=lambda qid: f"[{qid}] {text_by_qid[qid][:80]}",
+                key="compare_claim_select",
+            )
+            if qids_available
+            else None
+        )
+
+    if claim_number:
+        if find_claim(run_a, claim_number) is None:
+            st.error(f"Claim {claim_number} introuvable dans le split test.")
+        else:
+            render_claim_comparison(
+                claim_number, run_a, run_b, name_a, name_b, corpus, bucket_by_qid
+            )
+    elif chosen_from_table is not None:
+        render_claim_comparison(
+            chosen_from_table, run_a, run_b, name_a, name_b, corpus, bucket_by_qid
+        )
 
 
 def render_claim_comparison(
-    qid: str, run_a: dict, run_b: dict, name_a: str, name_b: str, corpus: dict
+    qid: str,
+    run_a: dict,
+    run_b: dict,
+    name_a: str,
+    name_b: str,
+    corpus: dict,
+    bucket_by_qid: dict[str, str],
 ):
-    query_a = next(q for q in run_a["queries"] if q["query_id"] == qid)
-    query_b = next(q for q in run_b["queries"] if q["query_id"] == qid)
+    query_a = find_claim(run_a, qid)
+    query_b = find_claim(run_b, qid)
 
-    st.markdown("### Claim")
+    rank_a = query_a["per_query_metrics"]["best_rank"]
+    rank_b = query_b["per_query_metrics"]["best_rank"]
+
+    def _fmt_rank(rank: int | None) -> str:
+        return str(rank) if rank is not None else "hors top 100"
+
+    st.markdown(
+        f"**Rang A** : {_fmt_rank(rank_a)}  |  **Rang B** : {_fmt_rank(rank_b)}  |  "
+        f"**Bucket v1** : {bucket_by_qid.get(qid, '—')}"
+    )
+
+    st.markdown("### Query")
     st.info(query_a["query_text"])
 
-    st.markdown("### Documents attendus")
-    for d in query_a["expected_docs"]:
-        doc_data = corpus.get(d["doc_id"], {})
-        st.markdown(f"**{doc_data.get('title', '?')}**  \n`{d['doc_id']}`")
-        with st.expander("Texte complet", key=f"compare_expected_{qid}_{d['doc_id']}"):
-            st.write(doc_data.get("text", ""))
+    st.markdown("### Docs attendus")
+    retriever_a = run_a["config"]["retriever"]
+    retriever_b = run_b["config"]["retriever"]
+    expected_b_by_id = {d["doc_id"]: d for d in query_b["expected_docs"]}
+    for d_a in query_a["expected_docs"]:
+        doc_id = d_a["doc_id"]
+        d_b = expected_b_by_id.get(doc_id, d_a)
+        doc_data = corpus.get(doc_id, {})
+        token_count_a, token_count_b = d_a["token_count"], d_b["token_count"]
+        badge_a = unit_badge(retriever_a, token_count_a)
+        badge_b = unit_badge(retriever_b, token_count_b)
+        token_label = (
+            f"{token_count_a} tokens"
+            if token_count_a == token_count_b
+            else f"{token_count_a} tokens (A) / {token_count_b} tokens (B)"
+        )
+        st.markdown(
+            f"**{doc_data.get('title', '?')}**  \n`{doc_id}` — {token_label}  \n"
+            f"A : {badge_a}  |  B : {badge_b}"
+        )
+        show_cut = badge_a == "tronqué" or badge_b == "tronqué"
+        render_doc_text(
+            doc_data.get("text", ""),
+            key=f"compare_expected_{qid}_{doc_id}",
+            max_tokens=256 if show_cut else None,
+        )
 
+    st.divider()
     expected_ids = {d["doc_id"] for d in query_a["expected_docs"]}
     top10_a = query_a["retrieved_top100"][:10]
     top10_b = query_b["retrieved_top100"][:10]
@@ -923,6 +986,51 @@ def render_claim_comparison(
         render_top10_side(
             top10_b, expected_ids, ids_a, corpus, key_prefix=f"cmp_b_{qid}"
         )
+
+    st.divider()
+    if st.button("Copier pour l'IA", key=f"compare_export_btn_{qid}"):
+        st.session_state.compare_show_export = qid
+    if st.session_state.get("compare_show_export") == qid:
+        md = export_compare_markdown(qid, run_a, run_b, name_a, name_b, corpus)
+        st.code(md, language="markdown")
+
+
+def export_compare_markdown(
+    qid: str, run_a: dict, run_b: dict, name_a: str, name_b: str, corpus: dict
+) -> str:
+    """Genere le markdown d'un claim compare entre deux runs, pour copier-coller."""
+    query_a = find_claim(run_a, qid)
+    query_b = find_claim(run_b, qid)
+
+    lines = [
+        f"## Claim {qid} — {name_a} vs {name_b}",
+        f"**Query** : {query_a['query_text']}",
+        "",
+    ]
+
+    lines.append("### Documents attendus")
+    lines.append("")
+    for d in query_a["expected_docs"]:
+        doc_data = corpus.get(d["doc_id"], {})
+        lines.append(
+            f"**{doc_data.get('title', '?')}** (`{d['doc_id']}`, {d['token_count']} tokens)"
+        )
+        lines.append("")
+        lines.append(doc_data.get("text", ""))
+        lines.append("")
+
+    for label, query in ((name_a, query_a), (name_b, query_b)):
+        lines.append(f"### Top 10 — {label}")
+        lines.append("")
+        for d in query["retrieved_top100"][:10]:
+            doc_data = corpus.get(d["doc_id"], {})
+            lines.append(
+                f"Rang {d['rank']} (score {d['score']:.4f}) — "
+                f"{doc_data.get('title', '?')} (`{d['doc_id']}`)"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def render_top10_side(
@@ -1002,9 +1110,21 @@ def render_query_detail(q: dict, corpus: dict):
                 render_doc_text(doc_data["text"], key=f"ret_{q['query_id']}_{doc_id}")
 
 
-def render_doc_text(text: str, key: str):
-    """Affiche le texte d'un doc avec marqueur visuel de troncature."""
-    seen, lost = split_at_truncation(text)
+def render_doc_text(text: str, key: str, max_tokens: int | None = 256):
+    """Affiche le texte d'un doc avec marqueur visuel de troncature.
+
+    `max_tokens=None` affiche le texte entier, sans coupure (EXE-111 : un run
+    qui ne tronque pas à 256 tokens ne doit montrer aucune coupure).
+    """
+    if max_tokens is None:
+        st.markdown(
+            f'<div style="background:#1a2e1a; border-left:4px solid #2ecc71; '
+            f'padding:12px; border-radius:4px; font-size:0.85em; line-height:1.5">'
+            f"{text}</div>",
+            unsafe_allow_html=True,
+        )
+        return
+    seen, lost = split_at_truncation(text, max_tokens)
     if not lost:
         # Doc complet — tout est vert
         st.markdown(

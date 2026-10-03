@@ -76,6 +76,22 @@ FILTER_LABELS = {
 }
 
 
+def find_claim(run: dict, qid: str) -> dict | None:
+    """Cherche une query par son `query_id` dans un run chargé, indépendamment de tout filtre. None si absente (EXE-111)."""
+    return next((q for q in run["queries"] if q["query_id"] == qid), None)
+
+
+def unit_badge(retriever_config: dict, token_count: int) -> str:
+    """Badge de lecture d'un document attendu selon l'unité/fenêtre déclarée par le run (EXE-111)."""
+    if retriever_config["unit"] == "passages":
+        return "découpé en passages"
+    if retriever_config["name"] == "bm25":
+        return "lu en entier"
+    if retriever_config["max_seq_length"] == 256:
+        return "tronqué" if token_count > 256 else "complet"
+    return "lu en entier"
+
+
 def filter_claims(rows: list[dict], filter_key: str) -> list[dict]:
     """Applique l'un des quatre filtres nommés de `FILTER_LABELS` à `rows`."""
     if filter_key == "perd_rang1":

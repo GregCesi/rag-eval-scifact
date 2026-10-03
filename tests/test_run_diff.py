@@ -16,10 +16,17 @@ from rag_eval_scifact.run_diff import (
     changed_claims,
     compare_claims,
     filter_claims,
+    find_claim,
     rank_comparison_counts,
+    unit_badge,
 )
 
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
+
+
+def _load_v2_grid_run(run_name: str) -> dict:
+    (path,) = RESULTS_DIR.glob(f"v2-grid/{run_name}-*.json.gz")
+    return load_run(path)
 
 
 def _run(name: str, ranks: dict[str, int | None]) -> dict:
@@ -139,3 +146,73 @@ def test_claim_70_on_real_v2_grid_pair():
     query_a = next(q for q in run_a["queries"] if q["query_id"] == "70")
     top2 = [d["doc_id"] for d in query_a["retrieved_top100"][:2]]
     assert top2 == ["5956380", "4414547"]
+
+
+# ─────────────────────────────────────────────
+# Critères 1 et 2 — trouver un claim par son numéro, indépendamment du filtre actif
+# ─────────────────────────────────────────────
+def test_find_claim_by_number_ignores_active_filter():
+    run_a = _load_v2_grid_run("dense-qwen3-256-sans-reranker")
+    run_b = _load_v2_grid_run("dense-qwen3-passages-sans-reranker")
+    rows = compare_claims(run_a, run_b)
+
+    # Le filtre « perd le rang 1 » exclut le claim 70 : son rang A est 15, pas 1.
+    filtered_qids = {r["query_id"] for r in filter_claims(rows, "perd_rang1")}
+    assert "70" not in filtered_qids
+
+    claim = find_claim(run_a, "70")
+    assert claim is not None
+    assert claim["query_id"] == "70"
+
+
+def test_find_claim_returns_none_for_unknown_number():
+    run_a = _load_v2_grid_run("dense-qwen3-256-sans-reranker")
+    assert find_claim(run_a, "999999") is None
+
+
+# ─────────────────────────────────────────────
+# Critère 7 — badge d'unité/fenêtre selon la config du run
+# ─────────────────────────────────────────────
+def test_unit_badge_document_256():
+    retriever = {"name": "dense", "unit": "document", "max_seq_length": 256}
+    assert unit_badge(retriever, 423) == "tronqué"
+    assert unit_badge(retriever, 200) == "complet"
+
+
+def test_unit_badge_document_2048():
+    retriever = {"name": "dense", "unit": "document", "max_seq_length": 2048}
+    assert unit_badge(retriever, 423) == "lu en entier"
+
+
+def test_unit_badge_passages():
+    retriever = {"name": "dense", "unit": "passages", "max_seq_length": 2048}
+    assert unit_badge(retriever, 9999) == "découpé en passages"
+
+
+def test_unit_badge_bm25_document():
+    retriever = {"name": "bm25", "unit": "document", "max_seq_length": 256}
+    assert unit_badge(retriever, 9999) == "lu en entier"
+
+
+# ─────────────────────────────────────────────
+# Critère 9 — claim 70, paire 256 / abstract-entier, valeurs du ticket
+# ─────────────────────────────────────────────
+def test_claim_70_badges_on_256_vs_abstract_entier_pair():
+    run_a = _load_v2_grid_run("dense-qwen3-256-sans-reranker")
+    run_b = _load_v2_grid_run("dense-qwen3-abstract-entier-sans-reranker")
+
+    expected_a = {
+        d["doc_id"]: d["token_count"] for d in find_claim(run_a, "70")["expected_docs"]
+    }
+    expected_b = {
+        d["doc_id"]: d["token_count"] for d in find_claim(run_b, "70")["expected_docs"]
+    }
+
+    assert expected_a["4414547"] == 423
+    assert expected_a["5956380"] == 272
+    assert expected_b["4414547"] == 423
+
+    retriever_a = run_a["config"]["retriever"]
+    retriever_b = run_b["config"]["retriever"]
+    assert unit_badge(retriever_a, expected_a["4414547"]) == "tronqué"
+    assert unit_badge(retriever_b, expected_b["4414547"]) == "lu en entier"
