@@ -31,6 +31,7 @@
       "Bash(git reset:*)",
       "Bash(git rebase:*)",
       "Bash(git -C:*)",
+      "Bash(git stash:*)",
       "Edit(./scripts/**)",
       "Edit(./.claude/rules/**)",
       "Edit(./.claude/settings.json)",

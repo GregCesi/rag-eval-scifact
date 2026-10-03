@@ -56,3 +56,5 @@ multi-stratégies tracé dans MLflow ».
 Si un LLM est nécessaire (post-v1 : génération, LLM-as-judge), utiliser **Ollama** (local uniquement).
 Attention : les juges LLM de MLflow (`mlflow.genai`) appellent OpenAI par défaut — les configurer sur Ollama.
 Invariant transversal absolu du projet, non négociable.
+
+Exception unique : le juge de référence de la campagne v3-juge appelle Claude par le mode non interactif de Claude Code, sur l'abonnement, sans clé d'API. Ses jugements sont étiquetés comme tels. Aucun autre code du dépôt n'appelle un modèle distant.
