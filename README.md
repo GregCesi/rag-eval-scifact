@@ -21,24 +21,60 @@ Les 300 requêtes du split `test` se répartissent en 4 buckets (comptes de [res
 
 Aucun levier n'est désigné comme correctif à ce jour : cette répartition cadre les prédictions de la campagne en cours, elle ne conclut rien. Fiches annotées par bucket : [results/export-annotations-v1.md](results/export-annotations-v1.md).
 
+## Campagne v2-grid — résultats (2026-10-03)
+
+34 runs (17 retrievers × rerank oui/non), lancés le 2026-10-03. Rapport complet : [results/v2-grid/RAPPORT.md](results/v2-grid/RAPPORT.md). Prédiction écrite avant le premier run : [results/v2-grid/PREDICTION.md](results/v2-grid/PREDICTION.md).
+
+| run | nDCG@10 | Δ nDCG@10 | p (nDCG@10) | MRR |
+|---|---|---|---|---|
+| dense-qwen3-passages-sans-reranker | 0.732 | +0.087 | 0.0001 | 0.701 |
+| hybrid-qwen3-passages-union-sans-reranker | 0.731 | +0.086 | 0.0001 | 0.703 |
+| hybrid-qwen3-256-rrf-sans-reranker | 0.712 | +0.067 | 0.0003 | 0.690 |
+| dense-qwen3-abstract-entier-sans-reranker | 0.700 | +0.055 | 0.0006 | 0.669 |
+| dense-qwen3-256-sans-reranker | 0.697 | +0.052 | 0.0004 | 0.663 |
+| dense-minilm-256-avec-reranker | 0.689 | +0.044 | 0.0070 | 0.663 |
+| dense-minilm-passages-sans-reranker | 0.676 | +0.031 | 0.0259 | 0.641 |
+| bm25-document-sans-reranker | 0.655 | +0.010 | 0.6200 | 0.626 |
+| dense-minilm-256-sans-reranker (référence v1) | 0.645 | +0.000 | 1.0000 | 0.611 |
+
+Écart et p-value face à la référence `dense-minilm-256-sans-reranker` (v1 rejouée), test de randomisation apparié codé à la main.
+
+### Effet de chaque levier isolé, en nDCG@10
+
+- **Modèle, à 256 tokens** : MiniLM 0,645, Qwen 0,697.
+- **Passages contre troncature** : MiniLM 0,676 contre 0,645 ; Qwen 0,732 contre 0,697 ; BM25 0,625 contre 0,655.
+- **Abstract entier contre troncature, avec Qwen** : 0,700 contre 0,697.
+
+### Reranker
+
+Sur les 17 retrievers, 9 runs avec reranker sont au-dessus de leur jumeau sans reranker (ceux à base de MiniLM seul, de BM25 seul ou des deux, plus Qwen abstract entier à +0,001) et 8 en dessous (tous à base de Qwen) ; les 17 runs avec reranker tiennent entre 0,676 et 0,700.
+
+### Effet sur les buckets v1
+
+Au mieux, 8 des 22 claims `miss_100` reviennent dans le top 10 (part 0,364), et au mieux 26 des 40 claims `deep_miss` reviennent dans le top 10 (part 0,650). Buckets : [results/v1-buckets.json](results/v1-buckets.json).
+
+### Ma prédiction face à la mesure
+
+Prédiction complète : [results/v2-grid/PREDICTION.md](results/v2-grid/PREDICTION.md).
+
+- **Confirmé** : le penchant pour le dense sur passages, et un meilleur nDCG@10 sous 0,80.
+- **Contredit** : « un reranker est toujours mieux » ; « les miss_100 tombent à 0 ».
+
+### Limites
+
+- Un seul jeu de données (BEIR SciFact).
+- Un seul reranker testé (`cross-encoder/ms-marco-MiniLM-L-6-v2`).
+- Les p-values comparent chaque run à la référence v1, pas les runs entre eux.
+- Les jugements de pertinence de SciFact sont incomplets ; l'effet de ce manque sur ces chiffres n'a pas été mesuré.
+
 ## Labo en cours
 
-Depuis le 2026-10-01, le banc devient un labo multi-stratégies, tracé dans MLflow :
+Depuis le 2026-10-01, le banc est un labo multi-stratégies, tracé dans MLflow. Première campagne, `v2-grid` : 34 runs, lancée et rapportée le 2026-10-03 — résultats ci-dessus.
 
 - Une stratégie se déclare dans une configuration Hydra ([conf/config.yaml](conf/config.yaml)), jamais en dur dans le pipeline, et se lance par le lanceur Hydra standard (`--multirun` pour une grille).
 - Chaque run est archivé dans `results/` et suivi dans MLflow (tracking local, SQLite `mlflow.db`).
 - Deux runs se comparent par un test de randomisation apparié, codé à la main.
 - Une campagne ne se lance qu'après une prédiction écrite et commitée (`results/{campagne}/PREDICTION.md`).
-
-## Leviers de la première campagne
-
-La campagne `v2-grid` teste cinq leviers, chacun une dimension de configuration — **prévus, pas mesurés** : la grille n'a pas encore tourné, aucun résultat n'est à annoncer.
-
-- BM25
-- Fusion RRF
-- Reranking
-- Découpage en passages (chunking)
-- Modèle long contexte `Qwen/Qwen3-Embedding-0.6B`
 
 ## Stack
 
