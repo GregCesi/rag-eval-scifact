@@ -119,12 +119,131 @@ def split_at_truncation(text: str, max_tokens: int = 256) -> tuple[str, str]:
     return seen_text, lost_text
 
 
-def list_runs() -> list[Path]:
-    # Seuls les runs v1 : results/ contient aussi des annotations et des buckets en .json.
-    return sorted(RESULTS_DIR.glob("v1-dense-*.json"), reverse=True)
+SOURCE_LABELS = {"v1": "Runs v1 historiques"}
 
 
-def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
+def list_sources(results_dir: Path) -> list[str]:
+    """Sources de runs proposées dans la barre latérale (critère 1, EXE-113) :
+    les runs v1 historiques, puis chaque campagne (dossier à runs `*.json.gz`)."""
+    return ["v1"] + list_campaign_dirs(results_dir)
+
+
+def runs_for_source(results_dir: Path, source: str) -> list[Path]:
+    """Fichiers de run proposés pour une source choisie (critère 1, EXE-113).
+
+    `results_dir` contient aussi des annotations et des buckets en `.json` à
+    plat : seul le motif `v1-dense-*.json` les en distingue pour la source v1.
+    """
+    if source == "v1":
+        return sorted(results_dir.glob("v1-dense-*.json"), reverse=True)
+    return list_campaign_run_files(results_dir, source)
+
+
+def effective_retriever_config(run_data: dict) -> dict:
+    """Config du retriever sous une forme uniforme, pour `unit_badge` et l'affichage.
+
+    Un run v1 (format historique) n'a pas de bloc `retriever` : il est
+    toujours dense, document entier, MiniLM — ce bloc synthétique le
+    représente sous la même forme qu'un run de campagne (critères 2 et 7,
+    EXE-113).
+    """
+    cfg = run_data["config"]
+    if "retriever" in cfg:
+        return cfg["retriever"]
+    return {
+        "name": "dense",
+        "model": cfg["model"],
+        "max_seq_length": cfg["max_seq_length"],
+        "unit": "document",
+    }
+
+
+def effective_rerank_config(run_data: dict) -> dict | None:
+    """Config du reranker, ou None si absent (toujours None pour un run v1)."""
+    return run_data["config"].get("rerank")
+
+
+def is_cosine_scored(retriever_cfg: dict, rerank_cfg: dict | None) -> bool:
+    """Les scores de ce run sont-ils des cosinus bornés dans [0, 1] (H2, EXE-113) ?
+
+    Seul le dense pur, sans reclassement, respecte cette échelle : BM25, la
+    fusion hybride (union ou RRF) et le reranker cross-encoder ne la
+    respectent pas — les graphiques qui la supposent ne s'affichent pas pour
+    ces runs (« ce qui ne doit pas arriver »)."""
+    if rerank_cfg is not None and rerank_cfg.get("name") not in (None, "none"):
+        return False
+    return retriever_cfg["name"] == "dense"
+
+
+def dashboard_max_tokens(retriever_cfg: dict) -> int | None:
+    """Fenêtre de coupe affichée pour le texte d'un doc de ce run (critère 7,
+    EXE-113). None quand ce run ne tronque pas réellement à 256 tokens
+    (fenêtre longue, passages, BM25) — sinon `render_doc_text` inventerait une
+    coupe qui n'a jamais eu lieu (même règle que la page de comparaison,
+    EXE-111) : `unit_badge` tranche, avec un token_count volontairement grand
+    pour n'évaluer que les conditions de fenêtre, jamais une longueur réelle.
+    """
+    return 256 if unit_badge(retriever_cfg, 999_999) == "tronqué" else None
+
+
+TRUNCATION_BADGE_MARKDOWN = {
+    "tronqué": ":orange[tronqué]",
+    "complet": ":green[complet]",
+    "lu en entier": ":green[lu en entier]",
+    "découpé en passages": ":blue[découpé en passages]",
+}
+
+
+def truncation_badge_markdown(retriever_cfg: dict, token_count: int) -> str:
+    """Badge coloré de troncature d'un doc attendu, selon la même règle que la
+    page de comparaison (critère 7, EXE-113)."""
+    return TRUNCATION_BADGE_MARKDOWN[unit_badge(retriever_cfg, token_count)]
+
+
+def claim_rank_and_score(q: dict) -> tuple[int | None, float | None]:
+    """Rang et score du meilleur document attendu, dans le run choisi (critère
+    5, EXE-113). Ne relit jamais `v1-buckets.json` pour ces deux valeurs : ce
+    fichier ne fournit plus que le regroupement par bucket, figé sur le run v1.
+    """
+    rank = q["per_query_metrics"]["best_rank"]
+    if rank is None:
+        return None, None
+    return rank, q["retrieved_top100"][rank - 1]["score"]
+
+
+def campaign_strategy_lines(run_data: dict) -> list[str]:
+    """Lignes markdown de la stratégie déclarée par la config d'un run de
+    campagne (critère 2, EXE-113) : retriever, modèle, unité, fenêtre, fusion
+    si elle s'applique, reranker si activé, date. Jamais la dimension
+    d'embedding — le champ `dim` des configs de v2-grid vaut 384 même pour
+    Qwen, il est faux (« ce qui ne doit pas arriver »).
+    """
+    retriever = run_data["config"]["retriever"]
+    rerank = run_data["config"].get("rerank")
+    lines = [
+        f"**Retriever** : `{retriever['name']}`",
+        f"**Modèle** : `{retriever['model']}`",
+        f"**Unité** : {retriever['unit']}",
+    ]
+    if retriever["unit"] == "passages":
+        lines.append(
+            f"**Fenêtre** : {retriever['chunk_size']} tokens "
+            f"(chevauchement {retriever['chunk_overlap']})"
+        )
+    else:
+        lines.append(f"**Fenêtre** : {retriever['max_seq_length']} tokens")
+    if retriever["name"] == "hybrid":
+        fusion = retriever["fusion_mode"]
+        if fusion == "rrf":
+            fusion = f"rrf (k={retriever['rrf_k']})"
+        lines.append(f"**Fusion** : {fusion}")
+    if rerank is not None and rerank.get("name") not in (None, "none"):
+        lines.append(f"**Reranker** : `{rerank['model']}` (top {rerank['top_n']})")
+    lines.append(f"**Date** : {run_data['date']}")
+    return lines
+
+
+def queries_to_dataframe(queries: list[dict], retriever_cfg: dict) -> pd.DataFrame:
     """Aplatit les requêtes en DataFrame pour filtrage/tri interactif."""
     rows = []
     for q in queries:
@@ -158,7 +277,7 @@ def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
         else:
             category = "Rang 51-100"
 
-        troncature = "Tronqué" if token_count > 256 else "Complet"
+        troncature = unit_badge(retriever_cfg, token_count)
 
         rows.append(
             {
@@ -184,24 +303,38 @@ def queries_to_dataframe(queries: list[dict]) -> pd.DataFrame:
 def main():
     st.set_page_config(page_title="RAG Eval SciFact", layout="wide")
 
-    runs = list_runs()
-    if not runs:
-        st.error("Aucun fichier de résultats trouvé dans results/")
-        return
-
     # ===== SIDEBAR =====
     st.sidebar.title("RAG Eval SciFact")
-    run_names = [p.stem for p in runs]
-    selected = st.sidebar.selectbox("Run", run_names)
-    run_path = RESULTS_DIR / f"{selected}.json"
-    data = load_run(run_path)
 
-    cfg = data["config"]
-    st.sidebar.markdown(f"**Modèle** : `{cfg['model']}`")
-    st.sidebar.markdown(
-        f"**Dim** : {cfg['dim']}  |  **Max seq** : {cfg['max_seq_length']}"
+    sources = list_sources(RESULTS_DIR)
+    selected_source = st.sidebar.selectbox(
+        "Source", sources, format_func=lambda s: SOURCE_LABELS.get(s, s)
     )
-    st.sidebar.markdown(f"**Date** : {data['date']}")
+    run_files = runs_for_source(RESULTS_DIR, selected_source)
+
+    selected_run = None
+    if not run_files:
+        st.sidebar.info("Aucun run dans cette source.")
+    elif selected_source == "v1":
+        run_path = st.sidebar.selectbox("Run", run_files, format_func=lambda p: p.stem)
+        data = load_run(run_path)
+        cfg = data["config"]
+        st.sidebar.markdown(f"**Modèle** : `{cfg['model']}`")
+        st.sidebar.markdown(
+            f"**Dim** : {cfg['dim']}  |  **Max seq** : {cfg['max_seq_length']}"
+        )
+        st.sidebar.markdown(f"**Date** : {data['date']}")
+        selected_run = {"data": data, "can_annotate": True}
+    else:
+        runs_loaded = {p: load_campaign_run(p) for p in run_files}
+        run_path = st.sidebar.selectbox(
+            "Run", run_files, format_func=lambda p: runs_loaded[p]["run_name"]
+        )
+        data = runs_loaded[run_path]
+        for line in campaign_strategy_lines(data):
+            st.sidebar.markdown(line)
+        selected_run = {"data": data, "can_annotate": False}
+
     st.sidebar.divider()
 
     page = st.sidebar.radio(
@@ -217,27 +350,48 @@ def main():
     # Charger les buckets si disponibles
     buckets_path = RESULTS_DIR / "v1-buckets.json"
     buckets_data = load_buckets(buckets_path) if buckets_path.exists() else None
-    annotations = load_annotations(ANNOTATIONS_PATH)
-
-    queries = data["queries"]
-    df = queries_to_dataframe(queries)
-    queries_by_id = {q["query_id"]: q for q in queries}
     corpus = load_corpus()
 
-    if page == "Vue d'ensemble":
-        page_overview(data, df)
-    elif page == "Exploration interactive":
-        page_explore(df, queries_by_id, corpus)
-    elif page == "Analyse d'erreurs":
-        page_errors(df, queries_by_id, corpus, buckets_data, annotations)
-    elif page == "Comparer deux runs":
+    # La page de comparaison ne dépend pas du run choisi ci-dessus (critère 9,
+    # EXE-113) : elle s'ouvre même si aucun run n'est sélectionnable.
+    if page == "Comparer deux runs":
         page_compare(buckets_data, corpus)
+        return
+
+    if selected_run is None:
+        st.info("Choisis un run dans la barre de gauche pour voir cette page.")
+        return
+
+    data = selected_run["data"]
+    retriever_cfg = effective_retriever_config(data)
+    rerank_cfg = effective_rerank_config(data)
+    annotations = load_annotations(ANNOTATIONS_PATH)
+    queries = data["queries"]
+    df = queries_to_dataframe(queries, retriever_cfg)
+    queries_by_id = {q["query_id"]: q for q in queries}
+
+    if page == "Vue d'ensemble":
+        page_overview(data, df, retriever_cfg, rerank_cfg)
+    elif page == "Exploration interactive":
+        page_explore(df, queries_by_id, corpus, retriever_cfg)
+    elif page == "Analyse d'erreurs":
+        page_errors(
+            df,
+            queries_by_id,
+            corpus,
+            buckets_data,
+            annotations,
+            retriever_cfg,
+            selected_run["can_annotate"],
+        )
 
 
 # ─────────────────────────────────────────────
 # PAGE 1 : VUE D'ENSEMBLE
 # ─────────────────────────────────────────────
-def page_overview(data: dict, df: pd.DataFrame):
+def page_overview(
+    data: dict, df: pd.DataFrame, retriever_cfg: dict, rerank_cfg: dict | None
+):
     st.header("Vue d'ensemble")
 
     # Métriques
@@ -341,8 +495,20 @@ def page_overview(data: dict, df: pd.DataFrame):
             )
         st.plotly_chart(fig, use_container_width=True)
 
-    # Scores
+    # Scores — seulement à l'échelle cosinus (H2, EXE-113) : BM25, fusion
+    # hybride et reranker n'ont pas cette échelle, et un graphique qui la
+    # suppose ne s'affiche pas avec des données inventées pour eux (« ce qui
+    # ne doit pas arriver »).
     col1, col2 = st.columns(2)
+    if not is_cosine_scored(retriever_cfg, rerank_cfg):
+        message = (
+            "Scores non cosinus (BM25, fusion ou reranker) : "
+            "ce graphique ne s'applique pas à ce run."
+        )
+        col1.info(message)
+        col2.info(message)
+        return
+
     with col1:
         fig = px.histogram(
             df,
@@ -377,7 +543,9 @@ def page_overview(data: dict, df: pd.DataFrame):
 # ─────────────────────────────────────────────
 # PAGE 2 : EXPLORATION INTERACTIVE
 # ─────────────────────────────────────────────
-def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
+def page_explore(
+    df: pd.DataFrame, queries_by_id: dict, corpus: dict, retriever_cfg: dict
+):
     st.header("Exploration interactive")
     st.caption("Filtre, trie, clique — explore les requêtes selon n'importe quel axe.")
 
@@ -398,10 +566,10 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
         "Catégorie de rang", all_cats, default=all_cats
     )
 
-    # Filtre troncature
-    trunc_filter = st.sidebar.radio(
-        "Troncature", ["Tous", "Tronqué (>256)", "Complet (≤256)"], index=0
-    )
+    # Filtre troncature — options dérivées de ce run (critère 7, EXE-113) :
+    # un run en passages ou BM25 n'a pas de "Tronqué"/"Complet" à proposer.
+    trunc_options = ["Tous"] + sorted(df["troncature"].unique())
+    trunc_filter = st.sidebar.radio("Troncature", trunc_options, index=0)
 
     # Filtre score gap
     score_gap_filter = st.sidebar.checkbox(
@@ -423,10 +591,8 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
 
     # --- Appliquer les filtres ---
     filtered = df[df["category"].isin(selected_cats)].copy()
-    if trunc_filter == "Tronqué (>256)":
-        filtered = filtered[filtered["troncature"] == "Tronqué"]
-    elif trunc_filter == "Complet (≤256)":
-        filtered = filtered[filtered["troncature"] == "Complet"]
+    if trunc_filter != "Tous":
+        filtered = filtered[filtered["troncature"] == trunc_filter]
     if score_gap_filter:
         filtered = filtered[
             (filtered["score_gap"].notna()) & (filtered["score_gap"] < 0.02)
@@ -531,22 +697,28 @@ def page_explore(df: pd.DataFrame, queries_by_id: dict, corpus: dict):
             query_ids,
             format_func=lambda qid: f"[{qid}] {queries_by_id[qid]['query_text'][:80]}",
         )
-        render_query_detail(queries_by_id[chosen_id], corpus)
+        render_query_detail(queries_by_id[chosen_id], corpus, retriever_cfg)
 
 
-def _text_with_cut(text: str) -> str:
-    """Retourne le texte avec marqueur de coupe en texte brut."""
-    seen, lost = split_at_truncation(text)
+def _text_with_cut(text: str, max_tokens: int | None) -> str:
+    """Retourne le texte avec marqueur de coupe en texte brut.
+
+    `max_tokens=None` (critère 7, EXE-113) : ce run ne tronque pas réellement
+    à 256 tokens — jamais de marqueur de coupe inventé."""
+    if max_tokens is None:
+        return text
+    seen, lost = split_at_truncation(text, max_tokens)
     if not lost:
         return text
-    return f"{seen}\n\n--- ✂ coupe 256 tokens ---\n\n{lost}"
+    return f"{seen}\n\n--- ✂ coupe {max_tokens} tokens ---\n\n{lost}"
 
 
-def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
+def export_query_markdown(q: dict, corpus: dict, ann: dict, retriever_cfg: dict) -> str:
     """Genere le markdown complet d'une query pour copier-coller."""
     lines = []
     rank = q["per_query_metrics"]["best_rank"]
     expected_ids = {d["doc_id"] for d in q["expected_docs"]}
+    max_tokens = dashboard_max_tokens(retriever_cfg)
 
     lines.append(f"## Query {q['query_id']}")
     lines.append(f"**Question** : {q['query_text']}")
@@ -560,12 +732,12 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
     for ed in q["expected_docs"]:
         doc_data = corpus.get(ed["doc_id"], {})
         tc = ed["token_count"]
-        status = "TRONQUE" if tc > 256 else "COMPLET"
+        status = unit_badge(retriever_cfg, tc).upper()
         lines.append(
             f"**{doc_data.get('title', '?')}** (`{ed['doc_id']}`, {tc} tokens, {status})"
         )
         lines.append("")
-        lines.append(_text_with_cut(doc_data.get("text", "")))
+        lines.append(_text_with_cut(doc_data.get("text", ""), max_tokens))
         lines.append("")
 
     lines.append("### Top-5 retrouve")
@@ -573,7 +745,7 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
     for d in q["retrieved_top100"][:5]:
         doc_data = corpus.get(d["doc_id"], {})
         text = doc_data.get("text", "")
-        _seen, lost = split_at_truncation(text)
+        lost = max_tokens and split_at_truncation(text, max_tokens)[1]
         status = "TRONQUE" if lost else "COMPLET"
         hit = " ✅ PERTINENT" if d["doc_id"] in expected_ids else ""
         lines.append(
@@ -581,7 +753,7 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict) -> str:
             f"— **{doc_data.get('title', '?')}** (`{d['doc_id']}`){hit}"
         )
         lines.append("")
-        lines.append(_text_with_cut(text))
+        lines.append(_text_with_cut(text, max_tokens))
         lines.append("")
 
     if ann.get("categorie") or ann.get("note"):
@@ -602,6 +774,8 @@ def page_errors(
     corpus: dict,
     buckets_data: dict | None,
     annotations: dict[str, dict[str, str]],
+    retriever_cfg: dict,
+    can_annotate: bool,
 ):
     st.header("Analyse d'erreurs")
 
@@ -698,29 +872,37 @@ def page_errors(
 
     qid = query_ids[st.session_state.error_query_idx]
     q = queries_by_id[qid]
-    bucket_info = buckets_data["queries"][qid]
     expected_ids = {d["doc_id"] for d in q["expected_docs"]}
-    max_seq = 256
+    max_tokens = dashboard_max_tokens(retriever_cfg)
 
     # --- Annotation ---
     ann = annotations.get(qid, {})
-    new_cat = st.text_input(
-        "Categorie", value=ann.get("categorie", ""), key=f"ann_cat_{qid}"
-    )
-    new_note = st.text_area(
-        "Note", value=ann.get("note", ""), height=200, key=f"ann_note_{qid}"
-    )
-    if st.button("Sauvegarder", key=f"ann_save_{qid}"):
-        save_annotation(qid, new_cat.strip(), new_note.strip())
-        st.toast(f"Annotation query {qid} sauvegardee")
-        st.rerun()
-
-    # --- Infos bucket ---
-    if bucket_info["best_rank"] is not None:
-        st.markdown(
-            f"**Rang** : {bucket_info['best_rank']}  |  "
-            f"**Score** : {bucket_info['score']:.4f}"
+    if can_annotate:
+        new_cat = st.text_input(
+            "Categorie", value=ann.get("categorie", ""), key=f"ann_cat_{qid}"
         )
+        new_note = st.text_area(
+            "Note", value=ann.get("note", ""), height=200, key=f"ann_note_{qid}"
+        )
+        if st.button("Sauvegarder", key=f"ann_save_{qid}"):
+            save_annotation(qid, new_cat.strip(), new_note.strip())
+            st.toast(f"Annotation query {qid} sauvegardee")
+            st.rerun()
+    elif ann.get("categorie") or ann.get("note"):
+        # Run de campagne (critère 6, EXE-113) : l'annotation v1 se lit, sans
+        # bouton de sauvegarde — elle n'est jamais écrite depuis ce run.
+        st.markdown("**Annotation v1** (lecture seule)")
+        if ann.get("categorie"):
+            st.markdown(f"**Categorie** : {ann['categorie']}")
+        if ann.get("note"):
+            st.markdown(ann["note"])
+
+    # --- Infos bucket : rang/score du run choisi, jamais de v1-buckets.json
+    # (critère 5, EXE-113) — ce fichier ne fournit plus que le regroupement
+    # par bucket, figé sur le run v1.
+    rank, score = claim_rank_and_score(q)
+    if rank is not None:
+        st.markdown(f"**Rang** : {rank}  |  **Score** : {score:.4f}")
     else:
         st.markdown("**Rang** : aucun doc pertinent dans le top 100")
 
@@ -737,16 +919,13 @@ def page_errors(
         if not doc_data:
             st.markdown(f"`{d['doc_id']}` — *non trouve dans le corpus*")
             continue
-        truncated = d["token_count"] > max_seq
-        trunc_badge = (
-            f"  :orange[TRONQUE a ~{max_seq} tokens]"
-            if truncated
-            else "  :green[COMPLET]"
-        )
+        badge = truncation_badge_markdown(retriever_cfg, d["token_count"])
         st.markdown(
-            f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}"
+            f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens  {badge}"
         )
-        render_doc_text(doc_data["text"], key=f"err_expected_{d['doc_id']}")
+        render_doc_text(
+            doc_data["text"], key=f"err_expected_{d['doc_id']}", max_tokens=max_tokens
+        )
 
     # --- Top-5 retrouve ---
     st.markdown("### Top-5 retrouve")
@@ -762,14 +941,18 @@ def page_errors(
         with st.expander(label, expanded=False, key=f"err_top5_{qid}_{i}"):
             st.markdown(f"`{doc_id}`")
             if doc_data:
-                render_doc_text(doc_data["text"], key=f"err_ret_{qid}_{doc_id}")
+                render_doc_text(
+                    doc_data["text"],
+                    key=f"err_ret_{qid}_{doc_id}",
+                    max_tokens=max_tokens,
+                )
 
     # --- Export ---
     st.divider()
     if st.button("Copier pour l'IA"):
         st.session_state.show_export = qid
     if st.session_state.get("show_export") == qid:
-        md = export_query_markdown(q, corpus, ann)
+        md = export_query_markdown(q, corpus, ann, retriever_cfg)
         st.code(md, language="markdown")
 
 
@@ -1208,11 +1391,11 @@ def render_doc_text_with_passages(text: str, doc_passages: list[dict], key: str)
 # ─────────────────────────────────────────────
 # COMPOSANT : DÉTAIL D'UNE REQUÊTE
 # ─────────────────────────────────────────────
-def render_query_detail(q: dict, corpus: dict):
+def render_query_detail(q: dict, corpus: dict, retriever_cfg: dict):
     m = q["per_query_metrics"]
     rank = m["best_rank"]
     expected_ids = {d["doc_id"] for d in q["expected_docs"]}
-    max_seq = 256  # config du run
+    max_tokens = dashboard_max_tokens(retriever_cfg)
 
     # ── Query ──
     st.markdown("### Query")
@@ -1225,16 +1408,13 @@ def render_query_detail(q: dict, corpus: dict):
     for d in q["expected_docs"]:
         doc_data = corpus.get(d["doc_id"])
         if doc_data:
-            truncated = d["token_count"] > max_seq
-            trunc_badge = (
-                f"  :orange[TRONQUE a ~{max_seq} tokens]"
-                if truncated
-                else "  :green[COMPLET]"
-            )
+            badge = truncation_badge_markdown(retriever_cfg, d["token_count"])
             st.markdown(
-                f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens{trunc_badge}"
+                f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens  {badge}"
             )
-            render_doc_text(doc_data["text"], key=f"expected_{d['doc_id']}")
+            render_doc_text(
+                doc_data["text"], key=f"expected_{d['doc_id']}", max_tokens=max_tokens
+            )
         else:
             st.markdown(
                 f"`{d['doc_id']}` ({d['token_count']} tok) — *texte non trouvé dans le corpus*"
@@ -1257,7 +1437,11 @@ def render_query_detail(q: dict, corpus: dict):
         with st.expander(label, key=f"explore_ret_{q['query_id']}_{i}"):
             st.markdown(f"`{doc_id}`")
             if doc_data:
-                render_doc_text(doc_data["text"], key=f"ret_{q['query_id']}_{doc_id}")
+                render_doc_text(
+                    doc_data["text"],
+                    key=f"ret_{q['query_id']}_{doc_id}",
+                    max_tokens=max_tokens,
+                )
 
 
 def render_doc_text(text: str, key: str, max_tokens: int | None = 256):
