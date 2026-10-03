@@ -13,6 +13,12 @@ import streamlit as st
 from transformers import AutoTokenizer
 
 from rag_eval_scifact.compare import load_run as load_run_file
+from rag_eval_scifact.passage_detail import (
+    find_query_passage_detail,
+)
+from rag_eval_scifact.passage_detail import (
+    load_passage_detail as load_passage_detail_file,
+)
 from rag_eval_scifact.run_diff import (
     FILTER_LABELS,
     NOT_FOUND_RANK,
@@ -40,6 +46,12 @@ def load_run(path: Path) -> dict:
 def load_campaign_run(path: Path) -> dict:
     """Charge un run de campagne (`results/<campagne>/<run>.json.gz`)."""
     return load_run_file(path)
+
+
+@st.cache_data
+def load_passage_detail(path: Path) -> dict | None:
+    """Charge le fichier dérivé des passages d'un run, ou None s'il est absent (EXE-112)."""
+    return load_passage_detail_file(path)
 
 
 @st.cache_data
@@ -793,6 +805,7 @@ def page_compare(buckets_data: dict | None, corpus: dict):
 
     loaded_runs = [load_campaign_run(p) for p in run_files]
     runs_by_name = {run["run_name"]: run for run in loaded_runs}
+    paths_by_name = {run["run_name"]: p for run, p in zip(loaded_runs, run_files)}
     run_names = sorted(runs_by_name)
 
     col_a, col_b = st.columns(2)
@@ -801,6 +814,8 @@ def page_compare(buckets_data: dict | None, corpus: dict):
         "Run B", run_names, index=min(1, len(run_names) - 1), key="compare_run_b"
     )
     run_a, run_b = runs_by_name[name_a], runs_by_name[name_b]
+    passage_detail_a = load_passage_detail(paths_by_name[name_a])
+    passage_detail_b = load_passage_detail(paths_by_name[name_b])
 
     st.subheader("Métriques")
     metrics_df = pd.DataFrame(
@@ -907,11 +922,27 @@ def page_compare(buckets_data: dict | None, corpus: dict):
             st.error(f"Claim {claim_number} introuvable dans le split test.")
         else:
             render_claim_comparison(
-                claim_number, run_a, run_b, name_a, name_b, corpus, bucket_by_qid
+                claim_number,
+                run_a,
+                run_b,
+                name_a,
+                name_b,
+                corpus,
+                bucket_by_qid,
+                passage_detail_a,
+                passage_detail_b,
             )
     elif chosen_from_table is not None:
         render_claim_comparison(
-            chosen_from_table, run_a, run_b, name_a, name_b, corpus, bucket_by_qid
+            chosen_from_table,
+            run_a,
+            run_b,
+            name_a,
+            name_b,
+            corpus,
+            bucket_by_qid,
+            passage_detail_a,
+            passage_detail_b,
         )
 
 
@@ -923,6 +954,8 @@ def render_claim_comparison(
     name_b: str,
     corpus: dict,
     bucket_by_qid: dict[str, str],
+    passage_detail_a: dict | None = None,
+    passage_detail_b: dict | None = None,
 ):
     query_a = find_claim(run_a, qid)
     query_b = find_claim(run_b, qid)
@@ -961,12 +994,35 @@ def render_claim_comparison(
             f"**{doc_data.get('title', '?')}**  \n`{doc_id}` — {token_label}  \n"
             f"A : {badge_a}  |  B : {badge_b}"
         )
-        show_cut = badge_a == "tronqué" or badge_b == "tronqué"
-        render_doc_text(
-            doc_data.get("text", ""),
-            key=f"compare_expected_{qid}_{doc_id}",
-            max_tokens=256 if show_cut else None,
-        )
+        if retriever_a["unit"] == "passages" or retriever_b["unit"] == "passages":
+            col_pa, col_pb = st.columns(2)
+            with col_pa:
+                st.caption(f"Passages — A ({name_a})")
+                render_doc_passages_or_text(
+                    doc_id,
+                    doc_data,
+                    retriever_a,
+                    passage_detail_a,
+                    qid,
+                    key=f"compare_expected_passages_a_{qid}_{doc_id}",
+                )
+            with col_pb:
+                st.caption(f"Passages — B ({name_b})")
+                render_doc_passages_or_text(
+                    doc_id,
+                    doc_data,
+                    retriever_b,
+                    passage_detail_b,
+                    qid,
+                    key=f"compare_expected_passages_b_{qid}_{doc_id}",
+                )
+        else:
+            show_cut = badge_a == "tronqué" or badge_b == "tronqué"
+            render_doc_text(
+                doc_data.get("text", ""),
+                key=f"compare_expected_{qid}_{doc_id}",
+                max_tokens=256 if show_cut else None,
+            )
 
     st.divider()
     expected_ids = {d["doc_id"] for d in query_a["expected_docs"]}
@@ -979,12 +1035,26 @@ def render_claim_comparison(
     with col_a:
         st.markdown(f"#### A — {name_a}")
         render_top10_side(
-            top10_a, expected_ids, ids_b, corpus, key_prefix=f"cmp_a_{qid}"
+            top10_a,
+            expected_ids,
+            ids_b,
+            corpus,
+            retriever_a,
+            passage_detail_a,
+            qid,
+            key_prefix=f"cmp_a_{qid}",
         )
     with col_b:
         st.markdown(f"#### B — {name_b}")
         render_top10_side(
-            top10_b, expected_ids, ids_a, corpus, key_prefix=f"cmp_b_{qid}"
+            top10_b,
+            expected_ids,
+            ids_a,
+            corpus,
+            retriever_b,
+            passage_detail_b,
+            qid,
+            key_prefix=f"cmp_b_{qid}",
         )
 
     st.divider()
@@ -1038,6 +1108,9 @@ def render_top10_side(
     expected_ids: set[str],
     other_side_ids: set[str],
     corpus: dict,
+    retriever_cfg: dict,
+    passage_detail: dict | None,
+    qid: str,
     key_prefix: str,
 ):
     for doc in docs:
@@ -1052,7 +1125,84 @@ def render_top10_side(
         label = f"Rang {doc['rank']} — **{title}** — score {doc['score']:.4f}{badges}"
         with st.expander(label, key=f"{key_prefix}_{doc_id}"):
             st.markdown(f"`{doc_id}`")
-            st.write(doc_data.get("text", ""))
+            render_doc_passages_or_text(
+                doc_id,
+                doc_data,
+                retriever_cfg,
+                passage_detail,
+                qid,
+                key=f"{key_prefix}_{doc_id}_text",
+            )
+
+
+def render_doc_passages_or_text(
+    doc_id: str,
+    doc_data: dict,
+    retriever_cfg: dict,
+    passage_detail: dict | None,
+    qid: str,
+    key: str,
+):
+    """Texte d'un doc, annoté de ses passages si un fichier dérivé existe (EXE-112).
+
+    Hors de l'unité passages : texte brut, inchangé (critère « ce qui ne doit
+    pas arriver » — ce tour ne couvre que l'unité passages).
+    """
+    if retriever_cfg["unit"] != "passages":
+        st.write(doc_data.get("text", ""))
+        return
+
+    query_detail = find_query_passage_detail(passage_detail, qid)
+    doc_passages = (query_detail or {}).get("docs", {}).get(doc_id, [])
+    if not doc_passages:
+        st.caption("passages non disponibles pour ce run")
+        st.write(doc_data.get("text", ""))
+        return
+
+    full_text = f"{doc_data.get('title', '')} {doc_data.get('text', '')}"
+    render_doc_text_with_passages(full_text, doc_passages, key=key)
+
+
+def render_doc_text_with_passages(text: str, doc_passages: list[dict], key: str):
+    """Texte complet d'un doc, avec un badge au début de chaque passage et le
+    passage au meilleur score surligné sur toute sa portée (EXE-112, critères
+    4, 5, 6). `char_start`/`char_end` sont relatifs à `text` (titre + texte,
+    exactement ce que le run a découpé et indexé)."""
+    best = max(doc_passages, key=lambda p: p["score"])
+    cuts = sorted(
+        {0, len(text), best["char_start"], best["char_end"]}
+        | {p["char_start"] for p in doc_passages}
+    )
+    badges_at_start: dict[int, list[dict]] = {}
+    for p in doc_passages:
+        badges_at_start.setdefault(p["char_start"], []).append(p)
+
+    html_parts = []
+    for i in range(len(cuts) - 1):
+        start, end = cuts[i], cuts[i + 1]
+        segment = text[start:end]
+        prefix = ""
+        for p in badges_at_start.get(start, []):
+            is_best = p is best
+            color = "#2ecc71" if is_best else "#7f8c8d"
+            prefix += (
+                f'<span style="background:{color}; color:#111; font-size:0.7em; '
+                f"padding:1px 5px; border-radius:3px; margin-right:4px; "
+                f'font-weight:bold">score {p["score"]:.4f}</span>'
+            )
+        if start >= best["char_start"] and end <= best["char_end"]:
+            segment_html = (
+                '<span style="background:#1a2e1a; border-bottom:2px solid #2ecc71">'
+                f"{segment}</span>"
+            )
+        else:
+            segment_html = segment
+        html_parts.append(prefix + segment_html)
+
+    st.markdown(
+        f'<div style="font-size:0.85em; line-height:1.7">{"".join(html_parts)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ─────────────────────────────────────────────

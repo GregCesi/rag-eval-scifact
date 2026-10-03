@@ -91,3 +91,40 @@ def test_token_count_matches_the_number_of_offsets_in_the_window():
     )
 
     assert [p.token_count for p in passages] == [10, 10, 10, 4]
+
+
+# ---------------------------------------------------------------------------
+# EXE-112 — char_start/char_end : position du passage dans le texte d'origine
+# ---------------------------------------------------------------------------
+
+
+def test_passage_char_offsets_match_its_text_slice():
+    text = "abcdefghijklmnopqrstuvwxy"
+    passages = chunk_text(
+        "d1", text, chunk_size=10, chunk_overlap=3, offsets_fn=_char_offsets
+    )
+
+    for p in passages:
+        assert text[p.char_start : p.char_end] == p.text
+
+
+def test_passage_char_offsets_advance_with_the_window():
+    text = "abcdefghijklmnopqrstuvwxy"
+    passages = chunk_text(
+        "d1", text, chunk_size=10, chunk_overlap=3, offsets_fn=_char_offsets
+    )
+
+    assert [(p.char_start, p.char_end) for p in passages] == [
+        (0, 10),
+        (7, 17),
+        (14, 24),
+        (21, 25),
+    ]
+
+
+def test_empty_text_passage_has_zero_width_offsets():
+    passages = chunk_text(
+        "d1", "", chunk_size=10, chunk_overlap=3, offsets_fn=_char_offsets
+    )
+
+    assert (passages[0].char_start, passages[0].char_end) == (0, 0)

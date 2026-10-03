@@ -18,6 +18,8 @@ class Passage:
     doc_id: str
     text: str
     token_count: int
+    char_start: int
+    char_end: int
 
 
 def chunk_text(
@@ -37,7 +39,14 @@ def chunk_text(
     offsets = offsets_fn(text)
     if not offsets:
         return [
-            Passage(passage_id=f"{doc_id}::0", doc_id=doc_id, text=text, token_count=0)
+            Passage(
+                passage_id=f"{doc_id}::0",
+                doc_id=doc_id,
+                text=text,
+                token_count=0,
+                char_start=0,
+                char_end=0,
+            )
         ]
 
     step = chunk_size - chunk_overlap
@@ -55,6 +64,8 @@ def chunk_text(
                 doc_id=doc_id,
                 text=text[span_start:span_end],
                 token_count=end - start,
+                char_start=span_start,
+                char_end=span_end,
             )
         )
         index += 1
