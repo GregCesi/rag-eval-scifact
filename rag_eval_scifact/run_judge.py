@@ -1,10 +1,10 @@
-"""CLI : juge les paires d'une campagne avec un juge déclaré (EXE-119).
+"""CLI : juge les paires d'une campagne avec un juge déclaré (EXE-119, EXE-120).
 
-Seul le juge « local » (Ollama) existe à ce tour ; `--juge` est déjà pluriel
-pour que les juges suivants (Claude, par étapes) s'ajoutent sans renommer rien.
+`--juge` est pluriel depuis EXE-119 pour que les juges suivants s'ajoutent sans
+renommer rien ; « claude » (EXE-120) s'ajoute à « local ».
 
 Usage : python -m rag_eval_scifact.run_judge --campagne v3-juge
-        python -m rag_eval_scifact.run_judge --campagne dev --limit 10
+        python -m rag_eval_scifact.run_judge --campagne dev --juge claude --limit 10
 """
 
 from __future__ import annotations
@@ -21,14 +21,30 @@ from mlflow.entities import SpanType
 from mlflow.tracing.processor.base_mlflow import flush_all_batch_processors
 
 import rag_eval_scifact.mlflow_tracking  # noqa: F401  — URI de tracking + astuce agent désactivée
-from rag_eval_scifact.judge_local import DEFAULT_MODEL, call_ollama, judge_pairs
+from rag_eval_scifact.judge_claude import DEFAULT_MODEL as CLAUDE_DEFAULT_MODEL
+from rag_eval_scifact.judge_claude import call_claude_code
+from rag_eval_scifact.judge_claude import judge_pairs as judge_pairs_claude
+from rag_eval_scifact.judge_local import DEFAULT_MODEL as LOCAL_DEFAULT_MODEL
+from rag_eval_scifact.judge_local import call_ollama
+from rag_eval_scifact.judge_local import judge_pairs as judge_pairs_local
 from rag_eval_scifact.judge_pairs import load_pairs
 
 GATED_CAMPAGNE = "v3-juge"
 PREDICTION_PATH = "results/v3-juge/PREDICTION.md"
 RESULTS_DIR = Path("results")
 
-JUDGES = {"local": call_ollama}
+JUDGES = {
+    "local": {
+        "call_fn": call_ollama,
+        "judge_pairs": judge_pairs_local,
+        "default_model": LOCAL_DEFAULT_MODEL,
+    },
+    "claude": {
+        "call_fn": call_claude_code,
+        "judge_pairs": judge_pairs_claude,
+        "default_model": CLAUDE_DEFAULT_MODEL,
+    },
+}
 
 
 def _prediction_committed() -> bool:
@@ -99,7 +115,11 @@ def main(argv: list[str] | None = None) -> None:
         help=f"Campagne jugée (défaut : {GATED_CAMPAGNE}).",
     )
     parser.add_argument("--juge", default="local", choices=sorted(JUDGES))
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Modèle demandé (défaut : celui du juge choisi).",
+    )
     parser.add_argument(
         "--limit", type=int, default=None, help="Nombre de paires à juger au plus."
     )
@@ -116,14 +136,17 @@ def main(argv: list[str] | None = None) -> None:
     judgments_path = _judgments_path(args.campagne, args.juge)
     existing = _load_existing_judgments(judgments_path)
 
-    call_fn = JUDGES[args.juge]
+    judge_config = JUDGES[args.juge]
+    model = args.model or judge_config["default_model"]
+    call_fn = judge_config["call_fn"]
+    judge_pairs_fn = judge_config["judge_pairs"]
 
     mlflow.set_experiment(args.campagne)
     with mlflow.start_run(run_name=f"juge-{args.juge}") as run:
-        new_judgments = judge_pairs(
-            pairs, call_fn, set(existing), model=args.model, limit=args.limit
+        new_judgments = judge_pairs_fn(
+            pairs, call_fn, set(existing), model=model, limit=args.limit
         )
-        mlflow.log_param("model", args.model)
+        mlflow.log_param("model", model)
         mlflow.log_param("juge", args.juge)
         mlflow.log_metric("n_judgments", len(existing) + len(new_judgments))
         _log_judgment_traces(run.info.run_id, new_judgments)
