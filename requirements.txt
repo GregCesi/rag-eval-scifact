@@ -4,6 +4,7 @@
 # 1er octobre 2026, portage de la boucle agent-codeloop.
 -e .[dashboard]
 hydra-core
+langgraph
 mlflow
 rank_bm25
 requests

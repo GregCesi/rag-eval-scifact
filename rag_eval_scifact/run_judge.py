@@ -1,7 +1,7 @@
-"""CLI : juge les paires d'une campagne avec un juge déclaré (EXE-119, EXE-120).
+"""CLI : juge les paires d'une campagne avec un juge déclaré (EXE-119, EXE-120, EXE-121).
 
 `--juge` est pluriel depuis EXE-119 pour que les juges suivants s'ajoutent sans
-renommer rien ; « claude » (EXE-120) s'ajoute à « local ».
+renommer rien ; « claude » (EXE-120) et « etapes » (EXE-121) s'ajoutent à « local ».
 
 Usage : python -m rag_eval_scifact.run_judge --campagne v3-juge
         python -m rag_eval_scifact.run_judge --campagne dev --juge claude --limit 10
@@ -24,6 +24,8 @@ import rag_eval_scifact.mlflow_tracking  # noqa: F401  — URI de tracking + ast
 from rag_eval_scifact.judge_claude import DEFAULT_MODEL as CLAUDE_DEFAULT_MODEL
 from rag_eval_scifact.judge_claude import call_claude_code
 from rag_eval_scifact.judge_claude import judge_pairs as judge_pairs_claude
+from rag_eval_scifact.judge_etapes import DEFAULT_MODEL as ETAPES_DEFAULT_MODEL
+from rag_eval_scifact.judge_etapes import judge_pairs as judge_pairs_etapes
 from rag_eval_scifact.judge_local import DEFAULT_MODEL as LOCAL_DEFAULT_MODEL
 from rag_eval_scifact.judge_local import call_ollama
 from rag_eval_scifact.judge_local import judge_pairs as judge_pairs_local
@@ -43,6 +45,11 @@ JUDGES = {
         "call_fn": call_claude_code,
         "judge_pairs": judge_pairs_claude,
         "default_model": CLAUDE_DEFAULT_MODEL,
+    },
+    "etapes": {
+        "call_fn": call_ollama,
+        "judge_pairs": judge_pairs_etapes,
+        "default_model": ETAPES_DEFAULT_MODEL,
     },
 }
 
@@ -80,18 +87,27 @@ def _write_judgments(path: Path, judgments_by_id: dict[str, dict]) -> None:
 
 
 def _log_judgment_traces(run_id: str, judgments: list[dict]) -> None:
+    """Une trace par jugement. Un juge à étapes (EXE-121 critère 10) ajoute une
+    étape enfant par nœud de son graphe réellement appelé, avec son entrée et sa
+    sortie ; les juges à un seul appel (local, claude) n'ajoutent aucune étape."""
     for j in judgments:
         with mlflow.start_span(
             name=f"judge-{j['pair_id']}", span_type=SpanType.LLM, run_id=run_id
         ) as span:
             span.set_inputs({"pair_id": j["pair_id"]})
-            span.set_outputs(
-                {
-                    "verdict": j["verdict"],
-                    "evidence": j["evidence"],
-                    "reason": j["reason"],
-                }
-            )
+            outputs = {"verdict": j["verdict"], "evidence": j["evidence"]}
+            if "reason" in j:
+                outputs["reason"] = j["reason"]
+            if "cause" in j:
+                outputs["cause"] = j["cause"]
+            span.set_outputs(outputs)
+
+            for step_name, step in j.get("steps", {}).items():
+                with mlflow.start_span(
+                    name=f"{step_name}-{j['pair_id']}", span_type=SpanType.LLM
+                ) as step_span:
+                    step_span.set_inputs(step["input"])
+                    step_span.set_outputs(step["output"] or {})
     flush_all_batch_processors()
 
 

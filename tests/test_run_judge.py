@@ -152,3 +152,77 @@ def test_claude_judge_is_dispatched_to_its_own_call_fn_and_default_model(
     judgments = json.loads(judgments_path.read_text(encoding="utf-8"))
     assert judgments[0]["model"] == "claude-sonnet-5"
     assert judgments[0]["input_tokens"] == 42
+
+
+# ---------------------------------------------------------------------------
+# EXE-121, critère 1 — un troisième juge, « etapes ».
+# EXE-121, critère 10 — sa trace MLflow montre une étape par nœud appelé.
+# ---------------------------------------------------------------------------
+
+
+def test_etapes_judge_is_registered_by_default():
+    assert "etapes" in run_judge_module.JUDGES
+
+
+def test_etapes_judgment_trace_has_one_child_span_per_step_actually_called(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(run_judge_module, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(run_judge_module, "_prediction_committed", lambda: False)
+
+    def _fake_judge_pairs(pairs, call_fn, already_judged_ids, model, limit=None):
+        return [
+            {
+                "pair_id": "1:d1",
+                "claim_id": "1",
+                "doc_id": "d1",
+                "model": model,
+                "duration_seconds": 0.01,
+                "verdict": "SUPPORTS",
+                "evidence": "phrase",
+                "cause": "",
+                "discarded_sentences": 0,
+                "model_calls": 3,
+                "steps": {
+                    "claim": {
+                        "input": {"claim_text": "x"},
+                        "output": {"topic": "t", "effect": "e", "direction": "d"},
+                    },
+                    "document": {
+                        "input": {"doc_text": "y"},
+                        "output": {"sentences": ["phrase"], "discarded": 0},
+                    },
+                    "verdict": {
+                        "input": {"sentences": ["phrase"]},
+                        "output": {
+                            "verdict": "SUPPORTS",
+                            "decisive_sentence": "phrase",
+                        },
+                    },
+                },
+            }
+        ]
+
+    monkeypatch.setattr(
+        run_judge_module,
+        "JUDGES",
+        {
+            "etapes": {
+                "call_fn": lambda *a, **k: "",
+                "judge_pairs": _fake_judge_pairs,
+                "default_model": "modele-etapes-fabrique",
+            }
+        },
+    )
+    _write_pairs(tmp_path, "dev", [PAIR])
+
+    run_judge_module.main(["--campagne", "dev", "--juge", "etapes"])
+
+    run = mlflow.search_runs(experiment_names=["dev"], output_format="list")[0]
+    trace = mlflow.search_traces(run_id=run.info.run_id, return_type="list")[0]
+    span_names = {s.name for s in trace.data.spans}
+    assert span_names == {"judge-1:d1", "claim-1:d1", "document-1:d1", "verdict-1:d1"}
+
+    document_span = next(s for s in trace.data.spans if s.name == "document-1:d1")
+    assert document_span.inputs == {"doc_text": "y"}
+    assert document_span.outputs == {"sentences": ["phrase"], "discarded": 0}
