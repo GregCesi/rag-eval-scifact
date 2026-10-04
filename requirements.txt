@@ -6,3 +6,4 @@
 hydra-core
 mlflow
 rank_bm25
+requests
