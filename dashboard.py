@@ -13,6 +13,11 @@ import streamlit as st
 from transformers import AutoTokenizer
 
 from rag_eval_scifact.compare import load_run as load_run_file
+from rag_eval_scifact.origin_labels import (
+    build_label_lookup,
+    filter_rows_by_categorie,
+    label_in_clear,
+)
 from rag_eval_scifact.passage_detail import (
     find_query_passage_detail,
 )
@@ -102,6 +107,19 @@ def save_annotation(query_id: str, categorie: str, note: str):
         json.dump(annotations, f, indent=2, ensure_ascii=False)
 
 
+ORIGIN_LABELS_PATH = RESULTS_DIR / "etiquettes-origine.json"
+
+
+@st.cache_data
+def load_origin_labels(path: Path) -> dict | None:
+    """Charge le fichier des étiquettes d'origine (EXE-124). None si absent —
+    les pages qui l'utilisent n'affichent alors aucune étiquette d'origine."""
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def split_at_truncation(text: str, max_tokens: int = 256) -> tuple[str, str]:
     """Découpe le texte à la frontière de troncature du tokenizer.
 
@@ -117,6 +135,19 @@ def split_at_truncation(text: str, max_tokens: int = 256) -> tuple[str, str]:
     # Le reste
     lost_text = tokenizer.decode(encoded[max_tokens:], skip_special_tokens=True)
     return seen_text, lost_text
+
+
+def highlight_evidence_sentences(text: str, evidence_sentences: list[str]) -> str:
+    """Surligne les phrases-preuve retrouvées mot pour mot dans `text` (critère
+    11, EXE-124). Une phrase absente du texte (environ 20% des cas, H2) est
+    simplement laissée non surlignée, jamais signalée comme une erreur."""
+    for sentence in evidence_sentences:
+        if sentence and sentence in text:
+            text = text.replace(
+                sentence,
+                f'<mark style="background:#f1c40f; color:#111">{sentence}</mark>',
+            )
+    return text
 
 
 SOURCE_LABELS = {"v1": "Runs v1 historiques"}
@@ -352,10 +383,19 @@ def main():
     buckets_data = load_buckets(buckets_path) if buckets_path.exists() else None
     corpus = load_corpus()
 
+    # Étiquettes d'origine (EXE-124) : absentes -> dicts vides, aucune étiquette
+    # ni filtre affiché, jamais d'erreur.
+    origin_labels = load_origin_labels(ORIGIN_LABELS_PATH)
+    label_by_pair, evidence_by_pair, categorie_by_qid = (
+        build_label_lookup(origin_labels) if origin_labels else ({}, {}, {})
+    )
+
     # La page de comparaison ne dépend pas du run choisi ci-dessus (critère 9,
     # EXE-113) : elle s'ouvre même si aucun run n'est sélectionnable.
     if page == "Comparer deux runs":
-        page_compare(buckets_data, corpus)
+        page_compare(
+            buckets_data, corpus, label_by_pair, evidence_by_pair, categorie_by_qid
+        )
         return
 
     if selected_run is None:
@@ -383,6 +423,8 @@ def main():
             annotations,
             retriever_cfg,
             selected_run["can_annotate"],
+            label_by_pair,
+            evidence_by_pair,
         )
 
 
@@ -776,6 +818,8 @@ def page_errors(
     annotations: dict[str, dict[str, str]],
     retriever_cfg: dict,
     can_annotate: bool,
+    label_by_pair: dict[tuple[str, str], str] | None = None,
+    evidence_by_pair: dict[tuple[str, str], list[str]] | None = None,
 ):
     st.header("Analyse d'erreurs")
 
@@ -920,11 +964,23 @@ def page_errors(
             st.markdown(f"`{d['doc_id']}` — *non trouve dans le corpus*")
             continue
         badge = truncation_badge_markdown(retriever_cfg, d["token_count"])
+        label = (label_by_pair or {}).get((qid, d["doc_id"]))
+        label_line = (
+            f"  \n**Étiquette d'origine** : {label_in_clear(label)}" if label else ""
+        )
         st.markdown(
-            f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens  {badge}"
+            f"**{doc_data['title']}**  \n`{d['doc_id']}` — {d['token_count']} tokens  {badge}{label_line}"
+        )
+        evidence_sentences = (
+            (evidence_by_pair or {}).get((qid, d["doc_id"]))
+            if label in ("SUPPORT", "CONTRADICT")
+            else None
         )
         render_doc_text(
-            doc_data["text"], key=f"err_expected_{d['doc_id']}", max_tokens=max_tokens
+            doc_data["text"],
+            key=f"err_expected_{d['doc_id']}",
+            max_tokens=max_tokens,
+            evidence_sentences=evidence_sentences,
         )
 
     # --- Top-5 retrouve ---
@@ -969,7 +1025,13 @@ METRIC_LABELS = [
 ]
 
 
-def page_compare(buckets_data: dict | None, corpus: dict):
+def page_compare(
+    buckets_data: dict | None,
+    corpus: dict,
+    label_by_pair: dict[tuple[str, str], str] | None = None,
+    evidence_by_pair: dict[tuple[str, str], list[str]] | None = None,
+    categorie_by_qid: dict[str, str] | None = None,
+):
     st.header("Comparer deux runs")
 
     campaigns = list_campaign_dirs(RESULTS_DIR)
@@ -1038,6 +1100,25 @@ def page_compare(buckets_data: dict | None, corpus: dict):
         if filter_choice == "Tous"
         else filter_claims(rows, label_to_key[filter_choice])
     )
+
+    # Filtre par catégorie d'étiquette d'origine (critère 12, EXE-124) :
+    # n'apparaît que si le fichier des étiquettes d'origine est présent.
+    if categorie_by_qid:
+        categorie_titles = {
+            "confirme": "confirme",
+            "contredit": "contredit",
+            "sans_preuve": "sans preuve",
+        }
+        selected_categories = st.multiselect(
+            "Catégorie (étiquette d'origine)",
+            list(categorie_titles),
+            default=list(categorie_titles),
+            format_func=lambda c: categorie_titles[c],
+            key="compare_categorie_filter",
+        )
+        display_rows = filter_rows_by_categorie(
+            display_rows, set(selected_categories), categorie_by_qid
+        )
 
     bucket_by_qid = (
         {qid: info["bucket"] for qid, info in buckets_data["queries"].items()}
@@ -1114,6 +1195,8 @@ def page_compare(buckets_data: dict | None, corpus: dict):
                 bucket_by_qid,
                 passage_detail_a,
                 passage_detail_b,
+                label_by_pair,
+                evidence_by_pair,
             )
     elif chosen_from_table is not None:
         render_claim_comparison(
@@ -1126,6 +1209,8 @@ def page_compare(buckets_data: dict | None, corpus: dict):
             bucket_by_qid,
             passage_detail_a,
             passage_detail_b,
+            label_by_pair,
+            evidence_by_pair,
         )
 
 
@@ -1139,6 +1224,8 @@ def render_claim_comparison(
     bucket_by_qid: dict[str, str],
     passage_detail_a: dict | None = None,
     passage_detail_b: dict | None = None,
+    label_by_pair: dict[tuple[str, str], str] | None = None,
+    evidence_by_pair: dict[tuple[str, str], list[str]] | None = None,
 ):
     query_a = find_claim(run_a, qid)
     query_b = find_claim(run_b, qid)
@@ -1173,9 +1260,13 @@ def render_claim_comparison(
             if token_count_a == token_count_b
             else f"{token_count_a} tokens (A) / {token_count_b} tokens (B)"
         )
+        label = (label_by_pair or {}).get((qid, doc_id))
+        label_line = (
+            f"  \n**Étiquette d'origine** : {label_in_clear(label)}" if label else ""
+        )
         st.markdown(
             f"**{doc_data.get('title', '?')}**  \n`{doc_id}` — {token_label}  \n"
-            f"A : {badge_a}  |  B : {badge_b}"
+            f"A : {badge_a}  |  B : {badge_b}{label_line}"
         )
         if retriever_a["unit"] == "passages" or retriever_b["unit"] == "passages":
             col_pa, col_pb = st.columns(2)
@@ -1201,10 +1292,16 @@ def render_claim_comparison(
                 )
         else:
             show_cut = badge_a == "tronqué" or badge_b == "tronqué"
+            evidence_sentences = (
+                (evidence_by_pair or {}).get((qid, doc_id))
+                if label in ("SUPPORT", "CONTRADICT")
+                else None
+            )
             render_doc_text(
                 doc_data.get("text", ""),
                 key=f"compare_expected_{qid}_{doc_id}",
                 max_tokens=256 if show_cut else None,
+                evidence_sentences=evidence_sentences,
             )
 
     st.divider()
@@ -1444,21 +1541,38 @@ def render_query_detail(q: dict, corpus: dict, retriever_cfg: dict):
                 )
 
 
-def render_doc_text(text: str, key: str, max_tokens: int | None = 256):
+def render_doc_text(
+    text: str,
+    key: str,
+    max_tokens: int | None = 256,
+    evidence_sentences: list[str] | None = None,
+):
     """Affiche le texte d'un doc avec marqueur visuel de troncature.
 
     `max_tokens=None` affiche le texte entier, sans coupure (EXE-111 : un run
     qui ne tronque pas à 256 tokens ne doit montrer aucune coupure).
+
+    `evidence_sentences` (EXE-124, critère 11) surligne les phrases-preuve
+    d'un document SUPPORT ou CONTRADICT ; appliqué après la coupure de
+    troncature, pour qu'une phrase-preuve ne change jamais où cette coupure
+    tombe.
     """
     if max_tokens is None:
+        seen = text
+        if evidence_sentences:
+            seen = highlight_evidence_sentences(seen, evidence_sentences)
         st.markdown(
             f'<div style="background:#1a2e1a; border-left:4px solid #2ecc71; '
             f'padding:12px; border-radius:4px; font-size:0.85em; line-height:1.5">'
-            f"{text}</div>",
+            f"{seen}</div>",
             unsafe_allow_html=True,
         )
         return
     seen, lost = split_at_truncation(text, max_tokens)
+    if evidence_sentences:
+        seen = highlight_evidence_sentences(seen, evidence_sentences)
+        if lost:
+            lost = highlight_evidence_sentences(lost, evidence_sentences)
     if not lost:
         # Doc complet — tout est vert
         st.markdown(
