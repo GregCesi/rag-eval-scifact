@@ -150,6 +150,81 @@ def highlight_evidence_sentences(text: str, evidence_sentences: list[str]) -> st
     return text
 
 
+def _find_span_ignoring_case_and_spaces(
+    text: str, sentence: str
+) -> tuple[int, int] | None:
+    """Position (début, fin) de `sentence` dans `text`, casse et espaces
+    ignorés des deux côtés ; None si absente (EXE-126, H1b)."""
+    positions = [i for i, ch in enumerate(text) if not ch.isspace()]
+    haystack = "".join(text[i] for i in positions).lower()
+    needle = "".join(ch for ch in sentence if not ch.isspace()).lower()
+    if not needle:
+        return None
+    idx = haystack.find(needle)
+    if idx == -1:
+        return None
+    return positions[idx], positions[idx + len(needle) - 1] + 1
+
+
+def highlight_evidence_sentences_after_decode(
+    text: str, evidence_sentences: list[str]
+) -> str:
+    """Comme `highlight_evidence_sentences`, pour un texte redécodé par le
+    tokenizer (critère 3, EXE-126, H1b) : le redécodage change la casse et
+    les espaces (ex. "genome-wide" devient "genome - wide"), si bien que la
+    phrase-preuve d'origine ne s'y retrouve plus telle quelle. On la
+    retrouve en ignorant casse et espaces des deux côtés — toujours mot pour
+    mot, jamais par rapprochement approximatif."""
+    spans = []
+    for sentence in evidence_sentences:
+        if not sentence:
+            continue
+        span = _find_span_ignoring_case_and_spaces(text, sentence)
+        if span is not None:
+            spans.append(span)
+    for start, end in sorted(spans, reverse=True):
+        text = (
+            text[:start]
+            + f'<mark style="background:#f1c40f; color:#111">{text[start:end]}</mark>'
+            + text[end:]
+        )
+    return text
+
+
+def count_unlocated_evidence_sentences(text: str, evidence_sentences: list[str]) -> int:
+    """Nombre de phrases-preuve absentes mot pour mot de `text` (critère 8,
+    EXE-126) — toujours compté sur le texte brut du document, jamais sur une
+    vue redécodée ou tronquée."""
+    return sum(1 for s in evidence_sentences if s and s not in text)
+
+
+def _announce_unlocated_evidence_sentences(
+    text: str, evidence_sentences: list[str] | None
+) -> None:
+    """Ligne « n phrase(s)-preuve non localisée(s) dans ce texte » quand au
+    moins une phrase-preuve ne s'y retrouve pas mot pour mot (critère 8,
+    EXE-126)."""
+    if not evidence_sentences:
+        return
+    missing = count_unlocated_evidence_sentences(text, evidence_sentences)
+    if missing:
+        st.caption(f"{missing} phrase(s)-preuve non localisée(s) dans ce texte")
+
+
+def _evidence_spans(text: str, evidence_sentences: list[str]) -> list[tuple[int, int]]:
+    """Positions (début, fin) des phrases-preuve retrouvées mot pour mot dans
+    `text` (critère 2, EXE-126) — texte brut, jamais redécodé : recherche
+    exacte, comme `highlight_evidence_sentences`."""
+    spans = []
+    for sentence in evidence_sentences:
+        if not sentence:
+            continue
+        start = text.find(sentence)
+        if start != -1:
+            spans.append((start, start + len(sentence)))
+    return spans
+
+
 SOURCE_LABELS = {"v1": "Runs v1 historiques"}
 
 
@@ -755,14 +830,26 @@ def _text_with_cut(text: str, max_tokens: int | None) -> str:
     return f"{seen}\n\n--- ✂ coupe {max_tokens} tokens ---\n\n{lost}"
 
 
-def export_query_markdown(q: dict, corpus: dict, ann: dict, retriever_cfg: dict) -> str:
-    """Genere le markdown complet d'une query pour copier-coller."""
+def export_query_markdown(
+    q: dict,
+    corpus: dict,
+    ann: dict,
+    retriever_cfg: dict,
+    label_by_pair: dict[tuple[str, str], str] | None = None,
+    evidence_by_pair: dict[tuple[str, str], list[str]] | None = None,
+) -> str:
+    """Genere le markdown complet d'une query pour copier-coller.
+
+    `label_by_pair`/`evidence_by_pair` (critère 9, EXE-126) ajoutent, pour
+    chaque document attendu, son étiquette d'origine en clair et ses
+    phrases-preuve."""
     lines = []
+    qid = q["query_id"]
     rank = q["per_query_metrics"]["best_rank"]
     expected_ids = {d["doc_id"] for d in q["expected_docs"]}
     max_tokens = dashboard_max_tokens(retriever_cfg)
 
-    lines.append(f"## Query {q['query_id']}")
+    lines.append(f"## Query {qid}")
     lines.append(f"**Question** : {q['query_text']}")
     lines.append(
         f"**Meilleur rang** : {rank if rank else 'NON TROUVE dans le top 100'}"
@@ -772,12 +859,25 @@ def export_query_markdown(q: dict, corpus: dict, ann: dict, retriever_cfg: dict)
     lines.append("### Document(s) attendu(s)")
     lines.append("")
     for ed in q["expected_docs"]:
-        doc_data = corpus.get(ed["doc_id"], {})
+        doc_id = ed["doc_id"]
+        doc_data = corpus.get(doc_id, {})
         tc = ed["token_count"]
         status = unit_badge(retriever_cfg, tc).upper()
         lines.append(
-            f"**{doc_data.get('title', '?')}** (`{ed['doc_id']}`, {tc} tokens, {status})"
+            f"**{doc_data.get('title', '?')}** (`{doc_id}`, {tc} tokens, {status})"
         )
+        label = (label_by_pair or {}).get((qid, doc_id))
+        if label:
+            lines.append(f"**Étiquette d'origine** : {label_in_clear(label)}")
+        evidence_sentences = (
+            (evidence_by_pair or {}).get((qid, doc_id))
+            if label in ("SUPPORT", "CONTRADICT")
+            else None
+        )
+        if evidence_sentences:
+            lines.append("**Phrases-preuve** :")
+            for sentence in evidence_sentences:
+                lines.append(f"- {sentence}")
         lines.append("")
         lines.append(_text_with_cut(doc_data.get("text", ""), max_tokens))
         lines.append("")
@@ -1008,7 +1108,9 @@ def page_errors(
     if st.button("Copier pour l'IA"):
         st.session_state.show_export = qid
     if st.session_state.get("show_export") == qid:
-        md = export_query_markdown(q, corpus, ann, retriever_cfg)
+        md = export_query_markdown(
+            q, corpus, ann, retriever_cfg, label_by_pair, evidence_by_pair
+        )
         st.code(md, language="markdown")
 
 
@@ -1268,6 +1370,11 @@ def render_claim_comparison(
             f"**{doc_data.get('title', '?')}**  \n`{doc_id}` — {token_label}  \n"
             f"A : {badge_a}  |  B : {badge_b}{label_line}"
         )
+        evidence_sentences = (
+            (evidence_by_pair or {}).get((qid, doc_id))
+            if label in ("SUPPORT", "CONTRADICT")
+            else None
+        )
         if retriever_a["unit"] == "passages" or retriever_b["unit"] == "passages":
             col_pa, col_pb = st.columns(2)
             with col_pa:
@@ -1279,6 +1386,7 @@ def render_claim_comparison(
                     passage_detail_a,
                     qid,
                     key=f"compare_expected_passages_a_{qid}_{doc_id}",
+                    evidence_sentences=evidence_sentences,
                 )
             with col_pb:
                 st.caption(f"Passages — B ({name_b})")
@@ -1289,14 +1397,10 @@ def render_claim_comparison(
                     passage_detail_b,
                     qid,
                     key=f"compare_expected_passages_b_{qid}_{doc_id}",
+                    evidence_sentences=evidence_sentences,
                 )
         else:
             show_cut = badge_a == "tronqué" or badge_b == "tronqué"
-            evidence_sentences = (
-                (evidence_by_pair or {}).get((qid, doc_id))
-                if label in ("SUPPORT", "CONTRADICT")
-                else None
-            )
             render_doc_text(
                 doc_data.get("text", ""),
                 key=f"compare_expected_{qid}_{doc_id}",
@@ -1341,14 +1445,27 @@ def render_claim_comparison(
     if st.button("Copier pour l'IA", key=f"compare_export_btn_{qid}"):
         st.session_state.compare_show_export = qid
     if st.session_state.get("compare_show_export") == qid:
-        md = export_compare_markdown(qid, run_a, run_b, name_a, name_b, corpus)
+        md = export_compare_markdown(
+            qid, run_a, run_b, name_a, name_b, corpus, label_by_pair, evidence_by_pair
+        )
         st.code(md, language="markdown")
 
 
 def export_compare_markdown(
-    qid: str, run_a: dict, run_b: dict, name_a: str, name_b: str, corpus: dict
+    qid: str,
+    run_a: dict,
+    run_b: dict,
+    name_a: str,
+    name_b: str,
+    corpus: dict,
+    label_by_pair: dict[tuple[str, str], str] | None = None,
+    evidence_by_pair: dict[tuple[str, str], list[str]] | None = None,
 ) -> str:
-    """Genere le markdown d'un claim compare entre deux runs, pour copier-coller."""
+    """Genere le markdown d'un claim compare entre deux runs, pour copier-coller.
+
+    `label_by_pair`/`evidence_by_pair` (critère 9, EXE-126) ajoutent, pour
+    chaque document attendu, son étiquette d'origine en clair et ses
+    phrases-preuve — sans eux, l'export n'en disait rien."""
     query_a = find_claim(run_a, qid)
     query_b = find_claim(run_b, qid)
 
@@ -1361,10 +1478,23 @@ def export_compare_markdown(
     lines.append("### Documents attendus")
     lines.append("")
     for d in query_a["expected_docs"]:
-        doc_data = corpus.get(d["doc_id"], {})
+        doc_id = d["doc_id"]
+        doc_data = corpus.get(doc_id, {})
         lines.append(
-            f"**{doc_data.get('title', '?')}** (`{d['doc_id']}`, {d['token_count']} tokens)"
+            f"**{doc_data.get('title', '?')}** (`{doc_id}`, {d['token_count']} tokens)"
         )
+        label = (label_by_pair or {}).get((qid, doc_id))
+        if label:
+            lines.append(f"**Étiquette d'origine** : {label_in_clear(label)}")
+        evidence_sentences = (
+            (evidence_by_pair or {}).get((qid, doc_id))
+            if label in ("SUPPORT", "CONTRADICT")
+            else None
+        )
+        if evidence_sentences:
+            lines.append("**Phrases-preuve** :")
+            for sentence in evidence_sentences:
+                lines.append(f"- {sentence}")
         lines.append("")
         lines.append(doc_data.get("text", ""))
         lines.append("")
@@ -1422,36 +1552,67 @@ def render_doc_passages_or_text(
     passage_detail: dict | None,
     qid: str,
     key: str,
+    evidence_sentences: list[str] | None = None,
 ):
     """Texte d'un doc, annoté de ses passages si un fichier dérivé existe (EXE-112).
 
-    Hors de l'unité passages : texte brut, inchangé (critère « ce qui ne doit
-    pas arriver » — ce tour ne couvre que l'unité passages).
+    `evidence_sentences` (critère 2, EXE-126) surligne les phrases-preuve,
+    y compris dans l'unité passages — avant EXE-126, ce chemin ne recevait
+    jamais ce paramètre.
     """
+    _announce_unlocated_evidence_sentences(doc_data.get("text", ""), evidence_sentences)
+
     if retriever_cfg["unit"] != "passages":
-        st.write(doc_data.get("text", ""))
+        text = doc_data.get("text", "")
+        if evidence_sentences:
+            st.markdown(
+                highlight_evidence_sentences(text, evidence_sentences),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.write(text)
         return
 
     query_detail = find_query_passage_detail(passage_detail, qid)
     doc_passages = (query_detail or {}).get("docs", {}).get(doc_id, [])
     if not doc_passages:
         st.caption("passages non disponibles pour ce run")
-        st.write(doc_data.get("text", ""))
+        text = doc_data.get("text", "")
+        if evidence_sentences:
+            st.markdown(
+                highlight_evidence_sentences(text, evidence_sentences),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.write(text)
         return
 
     full_text = f"{doc_data.get('title', '')} {doc_data.get('text', '')}"
-    render_doc_text_with_passages(full_text, doc_passages, key=key)
+    render_doc_text_with_passages(
+        full_text, doc_passages, key=key, evidence_sentences=evidence_sentences
+    )
 
 
-def render_doc_text_with_passages(text: str, doc_passages: list[dict], key: str):
+def render_doc_text_with_passages(
+    text: str,
+    doc_passages: list[dict],
+    key: str,
+    evidence_sentences: list[str] | None = None,
+):
     """Texte complet d'un doc, avec un badge au début de chaque passage et le
     passage au meilleur score surligné sur toute sa portée (EXE-112, critères
     4, 5, 6). `char_start`/`char_end` sont relatifs à `text` (titre + texte,
-    exactement ce que le run a découpé et indexé)."""
+    exactement ce que le run a découpé et indexé).
+
+    `evidence_sentences` (critère 2, EXE-126) surligne en plus les
+    phrases-preuve retrouvées mot pour mot dans `text` ; leur marqueur se
+    distingue de celui du meilleur passage (critère 5)."""
     best = max(doc_passages, key=lambda p: p["score"])
+    evidence_spans = _evidence_spans(text, evidence_sentences or [])
     cuts = sorted(
         {0, len(text), best["char_start"], best["char_end"]}
         | {p["char_start"] for p in doc_passages}
+        | {pos for span in evidence_spans for pos in span}
     )
     badges_at_start: dict[int, list[dict]] = {}
     for p in doc_passages:
@@ -1470,6 +1631,8 @@ def render_doc_text_with_passages(text: str, doc_passages: list[dict], key: str)
                 f"padding:1px 5px; border-radius:3px; margin-right:4px; "
                 f'font-weight:bold">score {p["score"]:.4f}</span>'
             )
+        if any(s <= start and end <= e for s, e in evidence_spans):
+            segment = f'<mark style="background:#f1c40f; color:#111">{segment}</mark>'
         if start >= best["char_start"] and end <= best["char_end"]:
             segment_html = (
                 '<span style="background:#1a2e1a; border-bottom:2px solid #2ecc71">'
@@ -1555,8 +1718,11 @@ def render_doc_text(
     `evidence_sentences` (EXE-124, critère 11) surligne les phrases-preuve
     d'un document SUPPORT ou CONTRADICT ; appliqué après la coupure de
     troncature, pour qu'une phrase-preuve ne change jamais où cette coupure
-    tombe.
+    tombe. Le texte redécodé par le tokenizer (partie vue et partie perdue)
+    diffère de l'original en casse et en espaces : la recherche mot pour mot
+    les ignore des deux côtés dans ce cas précis (critère 3, EXE-126, H1b).
     """
+    _announce_unlocated_evidence_sentences(text, evidence_sentences)
     if max_tokens is None:
         seen = text
         if evidence_sentences:
@@ -1570,9 +1736,9 @@ def render_doc_text(
         return
     seen, lost = split_at_truncation(text, max_tokens)
     if evidence_sentences:
-        seen = highlight_evidence_sentences(seen, evidence_sentences)
+        seen = highlight_evidence_sentences_after_decode(seen, evidence_sentences)
         if lost:
-            lost = highlight_evidence_sentences(lost, evidence_sentences)
+            lost = highlight_evidence_sentences_after_decode(lost, evidence_sentences)
     if not lost:
         # Doc complet — tout est vert
         st.markdown(
