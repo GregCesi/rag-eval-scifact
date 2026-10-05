@@ -64,7 +64,12 @@ def _responds(verdict: str) -> bool:
 
 
 def judge_summary(judgments: list[dict]) -> dict:
-    """Critère 2 : effectifs de verdicts, citations introuvables, durée moyenne."""
+    """Critère 2 : effectifs de verdicts, citations introuvables, refus du
+    juge, durée moyenne.
+
+    EXE-131, critères 7 et 8 : « citation introuvable » est un indicateur à
+    part sur un jugement qui garde son verdict réel, pas un verdict en soi ;
+    « refus du juge » reste un verdict (aucune réponse du modèle à compter)."""
     counts = Counter(j["verdict"] for j in judgments)
     durations = [j["duration_seconds"] for j in judgments]
     return {
@@ -73,7 +78,10 @@ def judge_summary(judgments: list[dict]) -> dict:
         "refutes": counts.get("REFUTES", 0),
         "not_enough_info": counts.get("NOT_ENOUGH_INFO", 0),
         "illisible": counts.get("illisible", 0),
-        "citation_introuvable": counts.get("citation introuvable", 0),
+        "citation_introuvable": sum(
+            1 for j in judgments if j.get("citation_introuvable")
+        ),
+        "refus_du_juge": counts.get("refus du juge", 0),
         "avg_duration_seconds": statistics.mean(durations) if durations else 0.0,
     }
 
@@ -145,6 +153,24 @@ def expected_crosstab(judgments: list[dict], pairs_by_id: dict) -> dict:
         "n_valid": n_valid,
         "agreement": n_agree / n_valid if n_valid else 0.0,
     }
+
+
+def refused_pairs(judgments: list[dict], pairs_by_id: dict) -> list[dict]:
+    """EXE-131, critère 9 : paires où ce juge a essuyé un refus du modèle,
+    avec leur famille et leur étiquette d'origine."""
+    rows = []
+    for j in judgments:
+        if j["verdict"] != "refus du juge":
+            continue
+        pair = pairs_by_id[j["pair_id"]]
+        rows.append(
+            {
+                "pair_id": j["pair_id"],
+                "famille": pair["famille"],
+                "etiquette_origine": pair["etiquette_origine"],
+            }
+        )
+    return rows
 
 
 def devant_summary(judgments: list[dict], pairs_by_id: dict) -> dict:
@@ -297,6 +323,7 @@ def _render_judge_section(juge: str, judgments: list[dict] | None) -> list[str]:
         f"- NOT_ENOUGH_INFO : {summary['not_enough_info']}\n",
         f"- illisibles : {summary['illisible']}\n",
         f"- citations introuvables : {summary['citation_introuvable']}\n",
+        f"- refus du juge : {summary['refus_du_juge']}\n",
         f"- durée moyenne par jugement : {summary['avg_duration_seconds']:.4f} s\n",
     ]
     return lines
@@ -338,7 +365,24 @@ def _render_expected_crosstab_section(
         for label in ORIGIN_LABELS:
             n = crosstab["confusion"].get((verdict, label), 0)
             lines.append(f"  - {verdict} / {label} : {n}\n")
+    lines.append(f"- paires valides (dénominateur) : {crosstab['n_valid']}\n")
     lines.append(f"- part d'accord : {crosstab['agreement']:.4f}\n")
+    return lines
+
+
+def _render_refused_section(
+    juge: str, judgments: list[dict] | None, pairs_by_id: dict
+) -> list[str]:
+    if judgments is None:
+        return [f"### {juge}\n", "\n", "absent\n"]
+    rows = refused_pairs(judgments, pairs_by_id)
+    if not rows:
+        return [f"### {juge}\n", "\n", "aucun refus\n"]
+    lines = [f"### {juge}\n", "\n"]
+    for row in rows:
+        famille = ", ".join(row["famille"])
+        etiquette = row["etiquette_origine"] or ""
+        lines.append(f"- {row['pair_id']} : famille {famille}, étiquette {etiquette}\n")
     return lines
 
 
@@ -455,6 +499,13 @@ def build_report(campagne: str) -> str:
             _render_expected_crosstab_section(
                 juge, judgments_by_juge[juge], pairs_by_id
             )
+        )
+        lines.append("\n")
+
+    lines.append("## Paires refusées par le juge\n\n")
+    for juge in present:
+        lines.extend(
+            _render_refused_section(juge, judgments_by_juge[juge], pairs_by_id)
         )
         lines.append("\n")
 

@@ -6,7 +6,15 @@ from __future__ import annotations
 
 import json
 
-from rag_eval_scifact.judge_claude import citation_found, judge_pair, judge_pairs
+import pytest
+
+from rag_eval_scifact.judge_claude import (
+    call_claude_code,
+    citation_found,
+    judge_pair,
+    judge_pairs,
+)
+from rag_eval_scifact.judge_errors import ClaudeRefusal, JudgeCallError
 from rag_eval_scifact.judge_prompt import SYSTEM_PROMPT, build_user_prompt
 
 
@@ -98,6 +106,7 @@ def test_citation_found_true_for_empty_evidence():
 
 
 def test_verdict_marked_citation_introuvable_when_evidence_not_in_doc_text():
+    # EXE-131, critère 7 : le verdict rendu par le modèle est gardé.
     pair = _pair(doc_text="Un texte qui ne contient pas la citation inventée.")
     call_fn = _fake_call(
         json.dumps(
@@ -112,7 +121,8 @@ def test_verdict_marked_citation_introuvable_when_evidence_not_in_doc_text():
 
     judgment = judge_pair(pair, call_fn)
 
-    assert judgment["verdict"] == "citation introuvable"
+    assert judgment["verdict"] == "SUPPORTS"
+    assert judgment["citation_introuvable"] is True
 
 
 def test_verdict_kept_when_evidence_is_verbatim_in_doc_text():
@@ -131,6 +141,7 @@ def test_verdict_kept_when_evidence_is_verbatim_in_doc_text():
     judgment = judge_pair(pair, call_fn)
 
     assert judgment["verdict"] == "SUPPORTS"
+    assert judgment["citation_introuvable"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +267,7 @@ def test_judgment_records_reported_model_and_input_tokens_from_call_fn():
 
 
 def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
+    # EXE-131, critère 3 : une seule ligne de résumé, pas une par paire sautée.
     pairs = [_pair(pair_id="1:d1", doc_id="d1"), _pair(pair_id="1:d2", doc_id="d2")]
     call_fn = _fake_call(
         json.dumps(
@@ -268,8 +280,8 @@ def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
     assert [j["pair_id"] for j in judgments] == ["1:d2"]
     assert len(call_fn.calls) == 1
     out = capsys.readouterr().out
-    assert "1:d1" in out
-    assert "déjà jugée" in out
+    assert "1 paire déjà jugée, non rejugée" in out
+    assert "1:d1" not in out
 
 
 def test_judge_pairs_respects_limit_on_new_judgments_only():
@@ -287,3 +299,105 @@ def test_judge_pairs_respects_limit_on_new_judgments_only():
     judgments = judge_pairs(pairs, call_fn, already_judged_ids={"1:d1"}, limit=1)
 
     assert [j["pair_id"] for j in judgments] == ["1:d2"]
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critères 4 et 5 — refus du juge : enregistré tel quel, pas rejoué
+# ---------------------------------------------------------------------------
+
+
+def test_refusal_is_recorded_as_refus_du_juge_without_retry(capsys):
+    pair = _pair()
+    calls = []
+
+    def call_fn(model, system, user):
+        calls.append(1)
+        raise ClaudeRefusal(
+            "API Error: Sonnet 5 can't help with this. Start a new session to continue."
+        )
+
+    judgment = judge_pair(pair, call_fn)
+
+    assert judgment["verdict"] == "refus du juge"
+    assert "Sonnet 5 can't help with this" in judgment["reason"]
+    assert len(calls) == 1  # aucune reformulation, aucun second essai
+    out = capsys.readouterr().out
+    assert pair["pair_id"] in out
+    assert "refus du juge" in out
+
+
+def test_refused_pair_is_not_judged_again(capsys):
+    pairs = [_pair(pair_id="1:d1", doc_id="d1")]
+
+    def call_fn(model, system, user):
+        raise AssertionError("une paire déjà refusée ne doit pas être rejugée")
+
+    judgments = judge_pairs(pairs, call_fn, already_judged_ids={"1:d1"})
+
+    assert judgments == []
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critère 6 — l'appel Claude Code qui échoue devient une erreur
+# propre, jamais une trace Python brute
+# ---------------------------------------------------------------------------
+
+
+class _FakeCompletedProcess:
+    def __init__(self, stdout: str, stderr: str = "", returncode: int = 0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+def test_call_claude_code_raises_claude_refusal_on_refusal_stop_reason(monkeypatch):
+    import rag_eval_scifact.judge_claude as judge_claude_module
+
+    payload = json.dumps(
+        {
+            "stop_reason": "refusal",
+            "is_error": True,
+            "terminal_reason": "api_error",
+            "result": "API Error: Sonnet 5 can't help with this.",
+            "usage": {},
+            "modelUsage": {},
+        }
+    )
+    monkeypatch.setattr(
+        judge_claude_module.subprocess,
+        "run",
+        lambda *a, **k: _FakeCompletedProcess(payload, returncode=1),
+    )
+
+    with pytest.raises(ClaudeRefusal):
+        call_claude_code("sonnet", "system", "user")
+
+
+def test_call_claude_code_raises_judge_call_error_on_non_zero_exit_without_refusal(
+    monkeypatch,
+):
+    import rag_eval_scifact.judge_claude as judge_claude_module
+
+    monkeypatch.setattr(
+        judge_claude_module.subprocess,
+        "run",
+        lambda *a, **k: _FakeCompletedProcess(
+            "", stderr="session limit reached", returncode=1
+        ),
+    )
+
+    with pytest.raises(JudgeCallError):
+        call_claude_code("sonnet", "system", "user")
+
+
+def test_call_claude_code_raises_judge_call_error_on_unreadable_stdout(monkeypatch):
+    import rag_eval_scifact.judge_claude as judge_claude_module
+
+    monkeypatch.setattr(
+        judge_claude_module.subprocess,
+        "run",
+        lambda *a, **k: _FakeCompletedProcess("ceci n'est pas du JSON", returncode=0),
+    )
+
+    with pytest.raises(JudgeCallError):
+        call_claude_code("sonnet", "system", "user")

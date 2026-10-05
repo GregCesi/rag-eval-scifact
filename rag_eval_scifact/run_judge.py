@@ -34,6 +34,7 @@ from rag_eval_scifact.judge_pairs import load_pairs
 GATED_CAMPAGNE = "v3-juge"
 PREDICTION_PATH = "results/v3-juge/PREDICTION.md"
 RESULTS_DIR = Path("results")
+OLD_CITATION_INTROUVABLE_VERDICT = "citation introuvable"
 
 JUDGES = {
     "local": {
@@ -79,11 +80,26 @@ def _load_existing_judgments(path: Path) -> dict[str, dict]:
 
 
 def _write_judgments(path: Path, judgments_by_id: dict[str, dict]) -> None:
+    """Écriture atomique (fichier temporaire puis renommage) : une interruption
+    pendant l'écriture laisse l'ancien fichier intact et lisible (EXE-131, H4)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(
         json.dumps(list(judgments_by_id.values()), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    tmp_path.replace(path)
+
+
+def _already_judged_ids(existing: dict[str, dict]) -> set[str]:
+    """Exclut les jugements « citation introuvable » (ancienne forme) : ils
+    sont rejugés à la relance, le verdict qu'ils portaient ayant été perdu
+    (EXE-131, critère 10)."""
+    return {
+        pair_id
+        for pair_id, judgment in existing.items()
+        if judgment.get("verdict") != OLD_CITATION_INTROUVABLE_VERDICT
+    }
 
 
 def _log_judgment_traces(run_id: str, judgments: list[dict]) -> None:
@@ -151,24 +167,37 @@ def main(argv: list[str] | None = None) -> None:
     pairs = load_pairs(_pairs_path(args.campagne))
     judgments_path = _judgments_path(args.campagne, args.juge)
     existing = _load_existing_judgments(judgments_path)
+    already_judged_ids = _already_judged_ids(existing)
 
     judge_config = JUDGES[args.juge]
     model = args.model or judge_config["default_model"]
     call_fn = judge_config["call_fn"]
     judge_pairs_fn = judge_config["judge_pairs"]
 
+    def _on_judgment(judgment: dict) -> None:
+        # Écrit chaque jugement dès qu'il est produit (EXE-131, critère 2) :
+        # une interruption garde tout ce qui a déjà été jugé.
+        existing[judgment["pair_id"]] = judgment
+        _write_judgments(judgments_path, existing)
+
     mlflow.set_experiment(args.campagne)
     with mlflow.start_run(run_name=f"juge-{args.juge}") as run:
-        new_judgments = judge_pairs_fn(
-            pairs, call_fn, set(existing), model=model, limit=args.limit
-        )
         mlflow.log_param("model", model)
         mlflow.log_param("juge", args.juge)
-        mlflow.log_metric("n_judgments", len(existing) + len(new_judgments))
+        try:
+            new_judgments = judge_pairs_fn(
+                pairs,
+                call_fn,
+                already_judged_ids,
+                model=model,
+                limit=args.limit,
+                on_judgment=_on_judgment,
+            )
+        finally:
+            # Le nombre réellement gardé, même si l'appel ci-dessus a été
+            # interrompu ou a échoué (EXE-131, critère 11).
+            mlflow.log_metric("n_judgments", len(existing))
         _log_judgment_traces(run.info.run_id, new_judgments)
-
-    existing.update({j["pair_id"]: j for j in new_judgments})
-    _write_judgments(judgments_path, existing)
 
     _print_summary(new_judgments)
 

@@ -6,7 +6,15 @@ from __future__ import annotations
 
 import json
 
-from rag_eval_scifact.judge_local import citation_found, judge_pair, judge_pairs
+import pytest
+
+from rag_eval_scifact.judge_errors import JudgeCallError
+from rag_eval_scifact.judge_local import (
+    call_ollama,
+    citation_found,
+    judge_pair,
+    judge_pairs,
+)
 from rag_eval_scifact.judge_prompt import build_user_prompt
 
 
@@ -84,6 +92,9 @@ def test_citation_found_false_when_sentence_not_verbatim_in_document():
 
 
 def test_verdict_marked_citation_introuvable_when_evidence_not_in_doc_text():
+    # EXE-131, critère 7 : le verdict et le niveau rendus par le modèle sont
+    # gardés tels quels ; seul un indicateur à part signale la citation
+    # introuvable (avant EXE-131, le verdict était écrasé et perdu).
     pair = _pair(doc_text="Un texte qui ne contient pas la citation inventée.")
     call_fn = _fake_call(
         json.dumps(
@@ -98,8 +109,9 @@ def test_verdict_marked_citation_introuvable_when_evidence_not_in_doc_text():
 
     judgment = judge_pair(pair, call_fn)
 
-    assert judgment["verdict"] == "citation introuvable"
+    assert judgment["verdict"] == "SUPPORTS"
     assert judgment["level"] == "DIRECT"
+    assert judgment["citation_introuvable"] is True
 
 
 def test_verdict_kept_when_evidence_is_verbatim_in_doc_text():
@@ -119,6 +131,7 @@ def test_verdict_kept_when_evidence_is_verbatim_in_doc_text():
 
     assert judgment["verdict"] == "SUPPORTS"
     assert judgment["level"] == "DIRECT"
+    assert judgment["citation_introuvable"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +263,7 @@ def test_verdict_not_enough_info_with_level_none_is_valid():
 
 
 def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
+    # EXE-131, critère 3 : une seule ligne de résumé, pas une par paire sautée.
     pairs = [_pair(pair_id="1:d1", doc_id="d1"), _pair(pair_id="1:d2", doc_id="d2")]
     call_fn = _fake_call(
         json.dumps(
@@ -262,8 +276,8 @@ def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
     assert [j["pair_id"] for j in judgments] == ["1:d2"]
     assert len(call_fn.calls) == 1
     out = capsys.readouterr().out
-    assert "1:d1" in out
-    assert "déjà jugée" in out
+    assert "1 paire déjà jugée, non rejugée" in out
+    assert "1:d1" not in out
 
 
 def test_judge_pairs_respects_limit_on_new_judgments_only():
@@ -281,3 +295,39 @@ def test_judge_pairs_respects_limit_on_new_judgments_only():
     judgments = judge_pairs(pairs, call_fn, already_judged_ids={"1:d1"}, limit=1)
 
     assert [j["pair_id"] for j in judgments] == ["1:d2"]
+
+
+def test_judge_pairs_calls_on_judgment_as_each_judgment_is_produced():
+    # EXE-131, critère 2 : chaque jugement est livré dès qu'il est produit,
+    # pas seulement dans la liste rendue à la fin.
+    pairs = [_pair(pair_id="1:d1", doc_id="d1"), _pair(pair_id="1:d2", doc_id="d2")]
+    call_fn = _fake_call(
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "x"}
+        )
+    )
+    delivered = []
+
+    judge_pairs(pairs, call_fn, already_judged_ids=set(), on_judgment=delivered.append)
+
+    assert [j["pair_id"] for j in delivered] == ["1:d1", "1:d2"]
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critère 6 — l'appel Ollama qui échoue devient une erreur propre,
+# jamais une trace Python brute
+# ---------------------------------------------------------------------------
+
+
+def test_call_ollama_wraps_connection_failure_as_judge_call_error(monkeypatch):
+    import requests
+
+    import rag_eval_scifact.judge_local as judge_local_module
+
+    def _raise(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("Ollama ne répond pas")
+
+    monkeypatch.setattr(judge_local_module.requests, "post", _raise)
+
+    with pytest.raises(JudgeCallError):
+        call_ollama("llama3.1:8b", "system", "user", 0)

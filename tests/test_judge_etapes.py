@@ -366,6 +366,7 @@ def test_decisive_sentence_outside_the_retained_list_is_rejected_as_unparseable(
 
 
 def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
+    # EXE-131, critère 3 : une seule ligne de résumé, pas une par paire sautée.
     pairs = [_pair(pair_id="1:d1", doc_id="d1"), _pair(pair_id="1:d2", doc_id="d2")]
     call_fn = _sequenced_call(
         [
@@ -379,8 +380,8 @@ def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
 
     assert [j["pair_id"] for j in judgments] == ["1:d2"]
     out = capsys.readouterr().out
-    assert "1:d1" in out
-    assert "déjà jugée" in out
+    assert "1 paire déjà jugée, non rejugée" in out
+    assert "1:d1" not in out
 
 
 def test_judge_pairs_respects_limit_on_new_judgments_only():
@@ -411,6 +412,38 @@ def test_judge_pairs_respects_limit_on_new_judgments_only():
 # Critère 9 — un modèle configurable, température 0, graine fixe, un appel
 # Ollama par étape (la graine est transmise telle quelle à chaque appel)
 # ---------------------------------------------------------------------------
+
+
+def test_judge_pairs_stops_cleanly_on_judge_call_error_and_keeps_prior_judgments(
+    capsys,
+):
+    # EXE-131, critère 6 : le juge par étapes reçoit cette règle comme les
+    # deux autres. La paire en échec n'est pas enregistrée.
+    from rag_eval_scifact.judge_errors import JudgeCallError
+
+    pairs = [
+        _pair(pair_id="1:d1", doc_id="d1"),
+        _pair(pair_id="1:d2", doc_id="d2"),
+    ]
+    responses = iter(
+        [
+            _claim_response(),
+            _document_response([DOC_SENTENCE]),
+            _verdict_response("SUPPORTS", DOC_SENTENCE),
+        ]
+    )
+
+    def call_fn(model, system, user, seed):
+        try:
+            return next(responses)
+        except StopIteration:
+            raise JudgeCallError("Ollama ne répond pas") from None
+
+    judgments = judge_pairs(pairs, call_fn, already_judged_ids=set())
+
+    assert [j["pair_id"] for j in judgments] == ["1:d1"]
+    out = capsys.readouterr().out
+    assert "1 jugement(s) gardé(s)" in out
 
 
 def test_each_step_call_receives_the_configured_model_and_seed():

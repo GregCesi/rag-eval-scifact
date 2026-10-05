@@ -13,7 +13,9 @@ from collections.abc import Callable
 
 import requests
 
+from rag_eval_scifact.judge_errors import JudgeCallError
 from rag_eval_scifact.judge_prompt import SYSTEM_PROMPT, build_user_prompt
+from rag_eval_scifact.judge_runner import OnJudgment, run_judge_pairs
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 DEFAULT_MODEL = "llama3.1:8b"
@@ -27,23 +29,37 @@ CallFn = Callable[[str, str, str, int], str]
 
 
 def call_ollama(model: str, system_prompt: str, user_prompt: str, seed: int) -> str:
-    """Appel réel à Ollama (`/api/chat`, un tour, température 0, graine fixe)."""
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "stream": False,
-            "format": "json",
-            "options": {"temperature": 0, "seed": seed},
-        },
-        timeout=600,
-    )
-    response.raise_for_status()
-    return response.json()["message"]["content"]
+    """Appel réel à Ollama (`/api/chat`, un tour, température 0, graine fixe).
+
+    Une erreur réseau (Ollama qui ne répond pas) ou une sortie illisible
+    devient une `JudgeCallError` propre (EXE-131, critère 6), jamais une trace
+    Python brute.
+    """
+    try:
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0, "seed": seed},
+            },
+            timeout=600,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise JudgeCallError(f"Ollama ne répond pas : {exc}") from exc
+
+    try:
+        return response.json()["message"]["content"]
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise JudgeCallError(
+            "sortie Ollama illisible comme JSON", stdout=response.text
+        ) from exc
 
 
 def _level_consistent_with_verdict(verdict: str, level: str) -> bool:
@@ -126,18 +142,11 @@ def judge_pair(
             "level": "",
             "evidence": "",
             "reason": "",
+            "citation_introuvable": False,
         }
 
-    if not citation_found(parsed["evidence"], pair["doc_text"]):
-        return {
-            **judgment,
-            "verdict": "citation introuvable",
-            "level": parsed["level"],
-            "evidence": parsed["evidence"],
-            "reason": parsed["reason"],
-        }
-
-    return {**judgment, **parsed}
+    citation_ok = citation_found(parsed["evidence"], pair["doc_text"])
+    return {**judgment, **parsed, "citation_introuvable": not citation_ok}
 
 
 def judge_pairs(
@@ -147,18 +156,14 @@ def judge_pairs(
     model: str = DEFAULT_MODEL,
     seed: int = SEED,
     limit: int | None = None,
+    on_judgment: OnJudgment = lambda judgment: None,
 ) -> list[dict]:
-    """Juge les paires non encore jugées, dans l'ordre, jusqu'à `limit` (critère 9 et 11).
-
-    Une paire dont le `pair_id` est dans `already_judged_ids` n'est jamais
-    rejugée : la reprise après interruption le dit sur la console.
-    """
-    judgments: list[dict] = []
-    for pair in pairs:
-        if pair["pair_id"] in already_judged_ids:
-            print(f"{pair['pair_id']} : déjà jugée, non rejugée")
-            continue
-        if limit is not None and len(judgments) >= limit:
-            break
-        judgments.append(judge_pair(pair, call_fn, model=model, seed=seed))
-    return judgments
+    """Juge les paires non encore jugées, dans l'ordre, jusqu'à `limit`, par la
+    boucle commune aux trois juges (`judge_runner`, EXE-131)."""
+    return run_judge_pairs(
+        pairs,
+        lambda pair: judge_pair(pair, call_fn, model=model, seed=seed),
+        already_judged_ids,
+        on_judgment=on_judgment,
+        limit=limit,
+    )

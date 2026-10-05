@@ -23,6 +23,7 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from rag_eval_scifact.judge_local import MAX_RETRIES, SEED, citation_found
+from rag_eval_scifact.judge_runner import OnJudgment, run_judge_pairs
 
 DEFAULT_MODEL = "llama3.1:8b"
 VALID_STEP3_VERDICTS = {"SUPPORTS", "REFUTES", "NEITHER"}
@@ -417,15 +418,15 @@ def judge_pairs(
     model: str = DEFAULT_MODEL,
     seed: int = SEED,
     limit: int | None = None,
+    on_judgment: OnJudgment = lambda judgment: None,
 ) -> list[dict]:
-    """Juge les paires non encore jugées, dans l'ordre, jusqu'à `limit` (règle commune,
-    comme les deux autres juges)."""
-    judgments: list[dict] = []
-    for pair in pairs:
-        if pair["pair_id"] in already_judged_ids:
-            print(f"{pair['pair_id']} : déjà jugée, non rejugée")
-            continue
-        if limit is not None and len(judgments) >= limit:
-            break
-        judgments.append(judge_pair(pair, call_fn, model=model, seed=seed))
-    return judgments
+    """Juge les paires non encore jugées, dans l'ordre, jusqu'à `limit`, par la
+    boucle commune aux trois juges (`judge_runner`, EXE-131) : le juge par
+    étapes reçoit les critères 1 à 3, 6 et 11 comme les deux autres."""
+    return run_judge_pairs(
+        pairs,
+        lambda pair: judge_pair(pair, call_fn, model=model, seed=seed),
+        already_judged_ids,
+        on_judgment=on_judgment,
+        limit=limit,
+    )

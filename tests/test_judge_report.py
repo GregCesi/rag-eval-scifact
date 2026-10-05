@@ -21,6 +21,7 @@ from rag_eval_scifact.judge_report import (
     judge_summary,
     level_distribution,
     pairwise_comparison,
+    refused_pairs,
 )
 from rag_eval_scifact.stats import cohen_kappa
 
@@ -100,6 +101,8 @@ LOCAL_JUDGMENTS = [
 
 
 def test_judge_summary_counts_verdicts_and_average_duration():
+    # EXE-131, critère 7 : « citation introuvable » est un indicateur à part
+    # (le jugement garde son verdict réel), pas un verdict à lui seul.
     judgments = LOCAL_JUDGMENTS + [
         {
             "pair_id": "3:d5",
@@ -112,20 +115,29 @@ def test_judge_summary_counts_verdicts_and_average_duration():
             "pair_id": "3:d6",
             "claim_id": "3",
             "doc_id": "d6",
-            "verdict": "citation introuvable",
+            "verdict": "SUPPORTS",
+            "citation_introuvable": True,
             "duration_seconds": 6.0,
+        },
+        {
+            "pair_id": "3:d7",
+            "claim_id": "3",
+            "doc_id": "d7",
+            "verdict": "refus du juge",
+            "duration_seconds": 7.0,
         },
     ]
 
     summary = judge_summary(judgments)
 
-    assert summary["n_judged"] == 6
-    assert summary["supports"] == 1
+    assert summary["n_judged"] == 7
+    assert summary["supports"] == 2
     assert summary["refutes"] == 1
     assert summary["not_enough_info"] == 2
     assert summary["illisible"] == 1
     assert summary["citation_introuvable"] == 1
-    assert summary["avg_duration_seconds"] == pytest.approx(3.5)
+    assert summary["refus_du_juge"] == 1
+    assert summary["avg_duration_seconds"] == pytest.approx(4.0)
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +205,18 @@ def test_expected_crosstab_excludes_illisible_and_citation_introuvable():
 
     assert crosstab["n_valid"] == 0
     assert crosstab["agreement"] == 0.0
+
+
+def test_expected_crosstab_excludes_refus_du_juge():
+    # EXE-131, critère 8 : un refus sort du dénominateur d'accord.
+    judgments = [
+        {"pair_id": "1:d1", "verdict": "refus du juge"},
+        {"pair_id": "2:d3", "verdict": "SUPPORTS"},
+    ]
+
+    crosstab = expected_crosstab(judgments, PAIRS_BY_ID)
+
+    assert crosstab["n_valid"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +338,30 @@ def test_pairwise_comparison_is_none_without_any_common_valid_pair():
 
 
 # ---------------------------------------------------------------------------
+# EXE-131, critère 9 — paires refusées par juge
+# ---------------------------------------------------------------------------
+
+
+def test_refused_pairs_lists_pair_id_famille_and_etiquette_origine():
+    judgments = [
+        {"pair_id": "1:d1", "verdict": "SUPPORTS"},
+        {"pair_id": "1:d2", "verdict": "refus du juge"},
+        {"pair_id": "2:d4", "verdict": "refus du juge"},
+    ]
+
+    rows = refused_pairs(judgments, PAIRS_BY_ID)
+
+    assert rows == [
+        {"pair_id": "1:d2", "famille": ["devant"], "etiquette_origine": None},
+        {"pair_id": "2:d4", "famille": ["devant"], "etiquette_origine": None},
+    ]
+
+
+def test_refused_pairs_is_empty_without_any_refusal():
+    assert refused_pairs(LOCAL_JUDGMENTS, PAIRS_BY_ID) == []
+
+
+# ---------------------------------------------------------------------------
 # Critère 7 — croisement avec les étiquettes d'error analysis v1
 # ---------------------------------------------------------------------------
 
@@ -410,6 +458,22 @@ def test_report_says_which_judges_are_missing(_campaign):
     etapes_idx = lines.index("### etapes")
     assert lines[claude_idx + 2] == "absent"
     assert lines[etapes_idx + 2] == "absent"
+
+
+def test_report_lists_refused_pairs_and_the_expected_crosstab_denominator(_campaign):
+    # EXE-131, critères 8 et 9.
+    judgments = [
+        {**j, "verdict": "refus du juge"} if j["pair_id"] == "1:d2" else j
+        for j in LOCAL_JUDGMENTS
+    ]
+    _write_judgments(_campaign, "campagne-test", "local", judgments)
+
+    path = judge_report_module.write_report("campagne-test")
+    content = path.read_text(encoding="utf-8")
+
+    assert "## Paires refusées par le juge" in content
+    assert "1:d2" in content
+    assert "paires valides (dénominateur)" in content
 
 
 def test_report_regenerates_identically_when_judgments_are_unchanged(_campaign):

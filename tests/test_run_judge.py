@@ -103,11 +103,165 @@ def test_rerun_does_not_rejudge_existing_pairs(monkeypatch, _isolated_results, c
     run_judge_module.main(["--campagne", "dev"])
 
     out = capsys.readouterr().out
-    assert "1:d1" in out
-    assert "déjà jugée" in out
+    assert "2 paires déjà jugées, non rejugées" in out
     judgments_path = _isolated_results / "dev" / "jugements-local.json"
     judgments = json.loads(judgments_path.read_text(encoding="utf-8"))
     assert {j["pair_id"] for j in judgments} == {"1:d1", "1:d2"}
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critère 2 — chaque jugement est écrit dès qu'il est produit, pas
+# seulement à la fin du run
+# ---------------------------------------------------------------------------
+
+
+def test_judgments_are_written_incrementally_as_they_are_produced(
+    monkeypatch, _isolated_results
+):
+    pairs = [
+        {**PAIR, "pair_id": "1:d1", "doc_id": "d1"},
+        {**PAIR, "pair_id": "1:d2", "doc_id": "d2"},
+    ]
+    _write_pairs(_isolated_results, "dev", pairs)
+    seen_on_disk = []
+
+    judgments_path = _isolated_results / "dev" / "jugements-local.json"
+
+    def _fake_judge_pairs(
+        pairs,
+        call_fn,
+        already_judged_ids,
+        model,
+        limit=None,
+        on_judgment=lambda j: None,
+    ):
+        for pair in pairs:
+            judgment = {
+                "pair_id": pair["pair_id"],
+                "claim_id": pair["claim_id"],
+                "doc_id": pair["doc_id"],
+                "model": model,
+                "duration_seconds": 0.01,
+                "verdict": "SUPPORTS",
+            }
+            on_judgment(judgment)
+            seen_on_disk.append(json.loads(judgments_path.read_text(encoding="utf-8")))
+        return []
+
+    monkeypatch.setattr(
+        run_judge_module,
+        "JUDGES",
+        {
+            "local": {
+                "call_fn": _fake_call_fn,
+                "judge_pairs": _fake_judge_pairs,
+                "default_model": "modele-local-fabrique",
+            }
+        },
+    )
+
+    run_judge_module.main(["--campagne", "dev"])
+
+    assert [len(snapshot) for snapshot in seen_on_disk] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critère 6 — le juge s'arrête sans trace Python, le MLflow run porte
+# le nombre réellement gardé
+# ---------------------------------------------------------------------------
+
+
+def test_judge_call_error_stops_cleanly_and_mlflow_run_keeps_partial_count(
+    monkeypatch, _isolated_results, capsys
+):
+    from rag_eval_scifact.judge_errors import JudgeCallError
+
+    pairs = [
+        {**PAIR, "pair_id": "1:d1", "doc_id": "d1"},
+        {**PAIR, "pair_id": "1:d2", "doc_id": "d2"},
+    ]
+    _write_pairs(_isolated_results, "dev", pairs)
+
+    def _fake_judge_pairs(
+        pairs,
+        call_fn,
+        already_judged_ids,
+        model,
+        limit=None,
+        on_judgment=lambda j: None,
+    ):
+        on_judgment(
+            {
+                "pair_id": "1:d1",
+                "claim_id": "1",
+                "doc_id": "d1",
+                "model": model,
+                "duration_seconds": 0.01,
+                "verdict": "SUPPORTS",
+            }
+        )
+        raise JudgeCallError("code de sortie 1", stdout="out", stderr="err")
+
+    monkeypatch.setattr(
+        run_judge_module,
+        "JUDGES",
+        {
+            "local": {
+                "call_fn": _fake_call_fn,
+                "judge_pairs": _fake_judge_pairs,
+                "default_model": "modele-local-fabrique",
+            }
+        },
+    )
+
+    with pytest.raises(JudgeCallError):
+        run_judge_module.main(["--campagne", "dev"])
+
+    judgments_path = _isolated_results / "dev" / "jugements-local.json"
+    judgments = json.loads(judgments_path.read_text(encoding="utf-8"))
+    assert [j["pair_id"] for j in judgments] == ["1:d1"]
+
+    run = mlflow.search_runs(experiment_names=["dev"], output_format="list")[0]
+    assert run.data.metrics["n_judgments"] == 1
+
+
+# ---------------------------------------------------------------------------
+# EXE-131, critère 10 — un jugement « citation introuvable » (ancienne forme)
+# est rejugé à la relance
+# ---------------------------------------------------------------------------
+
+
+def test_old_format_citation_introuvable_judgment_is_rejudged(
+    monkeypatch, _isolated_results, capsys
+):
+    pairs = [{**PAIR, "pair_id": "1:d1", "doc_id": "d1"}]
+    _write_pairs(_isolated_results, "dev", pairs)
+    judgments_path = _isolated_results / "dev" / "jugements-local.json"
+    judgments_path.parent.mkdir(parents=True, exist_ok=True)
+    judgments_path.write_text(
+        json.dumps(
+            [
+                {
+                    "pair_id": "1:d1",
+                    "claim_id": "1",
+                    "doc_id": "d1",
+                    "verdict": "citation introuvable",
+                    "level": "DIRECT",
+                    "evidence": "x",
+                    "reason": "y",
+                    "duration_seconds": 1.0,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    run_judge_module.main(["--campagne", "dev"])
+
+    out = capsys.readouterr().out
+    assert "déjà jugée" not in out
+    new_judgments = json.loads(judgments_path.read_text(encoding="utf-8"))
+    assert new_judgments[0]["verdict"] == "SUPPORTS"
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +333,14 @@ def test_etapes_judgment_trace_has_one_child_span_per_step_actually_called(
     monkeypatch.setattr(run_judge_module, "RESULTS_DIR", tmp_path)
     monkeypatch.setattr(run_judge_module, "_prediction_committed", lambda: False)
 
-    def _fake_judge_pairs(pairs, call_fn, already_judged_ids, model, limit=None):
+    def _fake_judge_pairs(
+        pairs,
+        call_fn,
+        already_judged_ids,
+        model,
+        limit=None,
+        on_judgment=lambda j: None,
+    ):
         return [
             {
                 "pair_id": "1:d1",
