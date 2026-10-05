@@ -107,12 +107,19 @@ def judge_pair(
     }
 
     if parsed is None:
-        return {**judgment, "verdict": "illisible", "evidence": "", "reason": ""}
+        return {
+            **judgment,
+            "verdict": "illisible",
+            "level": "",
+            "evidence": "",
+            "reason": "",
+        }
 
     if not citation_found(parsed["evidence"], pair["doc_text"]):
         return {
             **judgment,
             "verdict": "citation introuvable",
+            "level": parsed["level"],
             "evidence": parsed["evidence"],
             "reason": parsed["reason"],
         }

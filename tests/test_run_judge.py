@@ -21,7 +21,9 @@ def _isolate_mlflow(tmp_path):
 
 
 def _fake_call_fn(model, system, user, seed):
-    return json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "ok"})
+    return json.dumps(
+        {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "ok"}
+    )
 
 
 @pytest.fixture
@@ -127,7 +129,14 @@ def test_claude_judge_is_dispatched_to_its_own_call_fn_and_default_model(
     def _fake_claude_call_fn(model, system, user):
         requested_models.append(model)
         return (
-            json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "ok"}),
+            json.dumps(
+                {
+                    "verdict": "SUPPORTS",
+                    "level": "DIRECT",
+                    "evidence": "",
+                    "reason": "ok",
+                }
+            ),
             "claude-sonnet-5",
             42,
         )

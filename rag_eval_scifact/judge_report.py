@@ -25,6 +25,13 @@ JUDGE_NAMES = ("local", "claude", "etapes")
 RESPONDING_VERDICTS = ("SUPPORTS", "REFUTES")
 VALID_VERDICTS = ("SUPPORTS", "REFUTES", "NOT_ENOUGH_INFO")
 CAUSES = ("hors sujet", "vocabulaire", "inférence", "sujet voisin")
+ORIGIN_LABELS = ("SUPPORT", "CONTRADICT", "SANS_PREUVE")
+VERDICT_AGREES_WITH_LABEL = {
+    "SUPPORTS": "SUPPORT",
+    "REFUTES": "CONTRADICT",
+    "NOT_ENOUGH_INFO": "SANS_PREUVE",
+}
+LEVELS = ("DIRECT", "VOCABULARY", "REASONING")
 ANNOTATION_FILES = (
     Path("results/v1-annotations.json"),
     Path("results/v1-deep-miss-annotations.json"),
@@ -114,6 +121,76 @@ def cause_summary(judgments: list[dict]) -> dict[str, int]:
     verdict vaut NOT_ENOUGH_INFO ; les autres jugements n'ont pas de cause)."""
     counts = Counter(j["cause"] for j in judgments if j.get("cause"))
     return {cause: counts.get(cause, 0) for cause in CAUSES}
+
+
+def expected_crosstab(judgments: list[dict], pairs_by_id: dict) -> dict:
+    """EXE-125, critère 8 : tableau croisé 3 × 3 verdict / étiquette d'origine
+    sur les documents attendus, et part d'accord. Restreint aux verdicts
+    valides (« illisible » et « citation introuvable » ne sont pas un verdict
+    sur l'étiquette)."""
+    confusion: Counter[tuple[str, str]] = Counter()
+    n_valid = 0
+    n_agree = 0
+    for j in judgments:
+        pair = pairs_by_id[j["pair_id"]]
+        if not pair["document_attendu"] or j["verdict"] not in VALID_VERDICTS:
+            continue
+        label = pair["etiquette_origine"]
+        confusion[(j["verdict"], label)] += 1
+        n_valid += 1
+        if VERDICT_AGREES_WITH_LABEL[j["verdict"]] == label:
+            n_agree += 1
+    return {
+        "confusion": confusion,
+        "n_valid": n_valid,
+        "agreement": n_agree / n_valid if n_valid else 0.0,
+    }
+
+
+def devant_summary(judgments: list[dict], pairs_by_id: dict) -> dict:
+    """EXE-125, critère 9 : effectifs de verdicts sur les paires « devant », et
+    les claims dont au moins un document classé devant répond au claim."""
+    counts: Counter[str] = Counter()
+    claims_with_responding_devant: set[str] = set()
+    for j in judgments:
+        pair = pairs_by_id[j["pair_id"]]
+        if "devant" not in pair["famille"]:
+            continue
+        if j["verdict"] in VALID_VERDICTS:
+            counts[j["verdict"]] += 1
+        if _responds(j["verdict"]):
+            claims_with_responding_devant.add(j["claim_id"])
+    return {
+        "supports": counts.get("SUPPORTS", 0),
+        "refutes": counts.get("REFUTES", 0),
+        "not_enough_info": counts.get("NOT_ENOUGH_INFO", 0),
+        "claims": sorted(claims_with_responding_devant, key=int),
+    }
+
+
+def level_distribution(
+    judgments: list[dict], pairs_by_id: dict, famille: str
+) -> dict[str, int] | None:
+    """EXE-125, critère 10 : répartition DIRECT/VOCABULARY/REASONING des
+    documents de la famille donnée (« attendu », restreint à SUPPORT/CONTRADICT,
+    ou « devant ») que le juge juge répondre au claim. `None` si aucun jugement
+    de `judgments` ne porte de niveau (juge par étapes, EXE-121 — sans niveau)."""
+    if not any("level" in j for j in judgments):
+        return None
+    counts: Counter[str] = Counter()
+    for j in judgments:
+        if "level" not in j or not _responds(j["verdict"]):
+            continue
+        pair = pairs_by_id[j["pair_id"]]
+        if famille not in pair["famille"]:
+            continue
+        if famille == "attendu" and pair["etiquette_origine"] not in (
+            "SUPPORT",
+            "CONTRADICT",
+        ):
+            continue
+        counts[j["level"]] += 1
+    return {level: counts.get(level, 0) for level in LEVELS}
 
 
 def pairwise_comparison(
@@ -251,6 +328,54 @@ def _render_dataset_section(
     ]
 
 
+def _render_expected_crosstab_section(
+    juge: str, judgments: list[dict], pairs_by_id: dict
+) -> list[str]:
+    lines = [f"### {juge}\n", "\n"]
+    crosstab = expected_crosstab(judgments, pairs_by_id)
+    lines.append("- tableau croisé (verdict / étiquette d'origine) :\n")
+    for verdict in VALID_VERDICTS:
+        for label in ORIGIN_LABELS:
+            n = crosstab["confusion"].get((verdict, label), 0)
+            lines.append(f"  - {verdict} / {label} : {n}\n")
+    lines.append(f"- part d'accord : {crosstab['agreement']:.4f}\n")
+    return lines
+
+
+def _render_devant_section(
+    juge: str, judgments: list[dict], pairs_by_id: dict
+) -> list[str]:
+    lines = [f"### {juge}\n", "\n"]
+    summary = devant_summary(judgments, pairs_by_id)
+    lines.append(f"- SUPPORTS : {summary['supports']}\n")
+    lines.append(f"- REFUTES : {summary['refutes']}\n")
+    lines.append(f"- NOT_ENOUGH_INFO : {summary['not_enough_info']}\n")
+    lines.append(
+        "- claims avec au moins un document devant jugé SUPPORTS ou REFUTES : "
+        f"{len(summary['claims'])}\n"
+    )
+    lines.append(f"- liste de ces claims : {', '.join(summary['claims'])}\n")
+    return lines
+
+
+def _render_level_section(
+    juge: str, judgments: list[dict], pairs_by_id: dict
+) -> list[str]:
+    lines = [f"### {juge}\n", "\n"]
+    attendu_levels = level_distribution(judgments, pairs_by_id, "attendu")
+    devant_levels = level_distribution(judgments, pairs_by_id, "devant")
+    if attendu_levels is None:
+        lines.append("sans niveau\n")
+        return lines
+    lines.append("- documents attendus (SUPPORT ou CONTRADICT) :\n")
+    for level in LEVELS:
+        lines.append(f"  - {level} : {attendu_levels[level]}\n")
+    lines.append("- documents devant :\n")
+    for level in LEVELS:
+        lines.append(f"  - {level} : {devant_levels[level]}\n")
+    return lines
+
+
 def _render_pairwise_section(
     juge_a: str, juge_b: str, comparison: dict | None
 ) -> list[str]:
@@ -322,6 +447,25 @@ def build_report(campagne: str) -> str:
         lines.extend(
             _render_dataset_section(juge, judgments_by_juge[juge], pairs_by_id)
         )
+        lines.append("\n")
+
+    lines.append("## Étiquette d'origine (documents attendus)\n\n")
+    for juge in present:
+        lines.extend(
+            _render_expected_crosstab_section(
+                juge, judgments_by_juge[juge], pairs_by_id
+            )
+        )
+        lines.append("\n")
+
+    lines.append("## Documents classés devant\n\n")
+    for juge in present:
+        lines.extend(_render_devant_section(juge, judgments_by_juge[juge], pairs_by_id))
+        lines.append("\n")
+
+    lines.append("## Niveau de lecture\n\n")
+    for juge in present:
+        lines.extend(_render_level_section(juge, judgments_by_juge[juge], pairs_by_id))
         lines.append("\n")
 
     lines.append("## Accord entre juges\n\n")

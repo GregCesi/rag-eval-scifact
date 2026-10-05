@@ -20,6 +20,8 @@ def _pair(**overrides):
         "doc_text": "Les biomatériaux 0D ont des propriétés inductives démontrées.",
         "rank": 42,
         "document_attendu": True,
+        "famille": ["attendu"],
+        "etiquette_origine": "SUPPORT",
     }
     base.update(overrides)
     return base
@@ -46,7 +48,9 @@ def _fake_call(
 def test_sends_the_same_system_and_user_prompt_as_the_local_judge():
     pair = _pair()
     call_fn = _fake_call(
-        json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "ok"})
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "ok"}
+        )
     )
 
     judge_pair(pair, call_fn)
@@ -64,9 +68,16 @@ def test_sends_the_same_system_and_user_prompt_as_the_local_judge():
 
 
 def test_judge_only_sends_claim_and_document_text_to_the_model():
-    pair = _pair(rank=42, document_attendu=True)
+    pair = _pair(
+        rank=42,
+        document_attendu=True,
+        famille=["attendu", "devant"],
+        etiquette_origine="SUPPORT",
+    )
     call_fn = _fake_call(
-        json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "ok"})
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "ok"}
+        )
     )
 
     judge_pair(pair, call_fn)
@@ -74,6 +85,7 @@ def test_judge_only_sends_claim_and_document_text_to_the_model():
     sent_user_prompt = call_fn.calls[0]["user"]
     assert "42" not in sent_user_prompt
     assert "document_attendu" not in sent_user_prompt
+    assert "devant" not in sent_user_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +103,7 @@ def test_verdict_marked_citation_introuvable_when_evidence_not_in_doc_text():
         json.dumps(
             {
                 "verdict": "SUPPORTS",
+                "level": "DIRECT",
                 "evidence": "phrase qui n'existe pas",
                 "reason": "x",
             }
@@ -108,6 +121,7 @@ def test_verdict_kept_when_evidence_is_verbatim_in_doc_text():
         json.dumps(
             {
                 "verdict": "SUPPORTS",
+                "level": "DIRECT",
                 "evidence": "Cette phrase précise est bien dans le document.",
                 "reason": "x",
             }
@@ -144,6 +158,7 @@ def test_verdict_recovers_if_a_retry_eventually_parses():
                 json.dumps(
                     {
                         "verdict": "REFUTES",
+                        "level": "DIRECT",
                         "evidence": "Preuve décisive citée mot pour mot.",
                         "reason": "x",
                     }
@@ -168,7 +183,43 @@ def test_verdict_recovers_if_a_retry_eventually_parses():
 def test_verdict_illisible_when_verdict_field_outside_enum():
     pair = _pair()
     call_fn = _fake_call(
-        json.dumps({"verdict": "MAYBE", "evidence": "", "reason": "x"})
+        json.dumps({"verdict": "MAYBE", "level": "NONE", "evidence": "", "reason": "x"})
+    )
+
+    judgment = judge_pair(pair, call_fn)
+
+    assert judgment["verdict"] == "illisible"
+
+
+# ---------------------------------------------------------------------------
+# EXE-125, critère 6 — niveau de lecture incohérent avec le verdict
+# ---------------------------------------------------------------------------
+
+
+def test_verdict_illisible_when_supports_has_level_none():
+    pair = _pair()
+    call_fn = _fake_call(
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "NONE", "evidence": "", "reason": "x"}
+        )
+    )
+
+    judgment = judge_pair(pair, call_fn)
+
+    assert judgment["verdict"] == "illisible"
+
+
+def test_verdict_illisible_when_not_enough_info_has_a_non_none_level():
+    pair = _pair()
+    call_fn = _fake_call(
+        json.dumps(
+            {
+                "verdict": "NOT_ENOUGH_INFO",
+                "level": "VOCABULARY",
+                "evidence": "",
+                "reason": "x",
+            }
+        )
     )
 
     judgment = judge_pair(pair, call_fn)
@@ -185,7 +236,9 @@ def test_verdict_illisible_when_verdict_field_outside_enum():
 def test_judgment_records_reported_model_and_input_tokens_from_call_fn():
     pair = _pair()
     call_fn = _fake_call(
-        json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "ok"}),
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "ok"}
+        ),
         model_reported="claude-sonnet-5",
         input_tokens=856,
     )
@@ -205,7 +258,9 @@ def test_judgment_records_reported_model_and_input_tokens_from_call_fn():
 def test_judge_pairs_skips_already_judged_pairs_and_says_so(capsys):
     pairs = [_pair(pair_id="1:d1", doc_id="d1"), _pair(pair_id="1:d2", doc_id="d2")]
     call_fn = _fake_call(
-        json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "x"})
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "x"}
+        )
     )
 
     judgments = judge_pairs(pairs, call_fn, already_judged_ids={"1:d1"})
@@ -224,7 +279,9 @@ def test_judge_pairs_respects_limit_on_new_judgments_only():
         _pair(pair_id="1:d3", doc_id="d3"),
     ]
     call_fn = _fake_call(
-        json.dumps({"verdict": "SUPPORTS", "evidence": "", "reason": "x"})
+        json.dumps(
+            {"verdict": "SUPPORTS", "level": "DIRECT", "evidence": "", "reason": "x"}
+        )
     )
 
     judgments = judge_pairs(pairs, call_fn, already_judged_ids={"1:d1"}, limit=1)

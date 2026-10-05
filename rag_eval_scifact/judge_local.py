@@ -20,6 +20,8 @@ DEFAULT_MODEL = "llama3.1:8b"
 SEED = 0
 MAX_RETRIES = 2
 VALID_VERDICTS = {"SUPPORTS", "REFUTES", "NOT_ENOUGH_INFO"}
+VALID_LEVELS = {"DIRECT", "VOCABULARY", "REASONING", "NONE"}
+RESPONDING_VERDICTS = {"SUPPORTS", "REFUTES"}
 
 CallFn = Callable[[str, str, str, int], str]
 
@@ -44,8 +46,17 @@ def call_ollama(model: str, system_prompt: str, user_prompt: str, seed: int) -> 
     return response.json()["message"]["content"]
 
 
+def _level_consistent_with_verdict(verdict: str, level: str) -> bool:
+    """Critère 6 (EXE-125) : NONE seulement pour NOT_ENOUGH_INFO, jamais pour
+    SUPPORTS/REFUTES, et réciproquement."""
+    if verdict in RESPONDING_VERDICTS:
+        return level != "NONE"
+    return level == "NONE"
+
+
 def parse_verdict(raw: str) -> dict | None:
-    """Parse la réponse JSON du modèle ; `None` si illisible ou hors énumération."""
+    """Parse la réponse JSON du modèle ; `None` si illisible, hors énumération,
+    ou si le niveau de lecture ne va pas avec le verdict (critère 6, EXE-125)."""
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -53,15 +64,18 @@ def parse_verdict(raw: str) -> dict | None:
     if not isinstance(data, dict):
         return None
     verdict = data.get("verdict")
+    level = data.get("level")
     evidence = data.get("evidence", "")
     reason = data.get("reason", "")
     if (
         verdict not in VALID_VERDICTS
+        or level not in VALID_LEVELS
         or not isinstance(evidence, str)
         or not isinstance(reason, str)
+        or not _level_consistent_with_verdict(verdict, level)
     ):
         return None
-    return {"verdict": verdict, "evidence": evidence, "reason": reason}
+    return {"verdict": verdict, "level": level, "evidence": evidence, "reason": reason}
 
 
 def citation_found(evidence: str, doc_text: str) -> bool:
@@ -106,12 +120,19 @@ def judge_pair(
     }
 
     if parsed is None:
-        return {**judgment, "verdict": "illisible", "evidence": "", "reason": ""}
+        return {
+            **judgment,
+            "verdict": "illisible",
+            "level": "",
+            "evidence": "",
+            "reason": "",
+        }
 
     if not citation_found(parsed["evidence"], pair["doc_text"]):
         return {
             **judgment,
             "verdict": "citation introuvable",
+            "level": parsed["level"],
             "evidence": parsed["evidence"],
             "reason": parsed["reason"],
         }

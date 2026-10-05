@@ -16,16 +16,47 @@ from rag_eval_scifact.judge_report import (
     annotation_crosstab,
     cause_summary,
     dataset_summary,
+    devant_summary,
+    expected_crosstab,
     judge_summary,
+    level_distribution,
     pairwise_comparison,
 )
 from rag_eval_scifact.stats import cohen_kappa
 
 PAIRS = [
-    {"pair_id": "1:d1", "claim_id": "1", "doc_id": "d1", "document_attendu": True},
-    {"pair_id": "1:d2", "claim_id": "1", "doc_id": "d2", "document_attendu": False},
-    {"pair_id": "2:d3", "claim_id": "2", "doc_id": "d3", "document_attendu": True},
-    {"pair_id": "2:d4", "claim_id": "2", "doc_id": "d4", "document_attendu": False},
+    {
+        "pair_id": "1:d1",
+        "claim_id": "1",
+        "doc_id": "d1",
+        "document_attendu": True,
+        "famille": ["attendu"],
+        "etiquette_origine": "SUPPORT",
+    },
+    {
+        "pair_id": "1:d2",
+        "claim_id": "1",
+        "doc_id": "d2",
+        "document_attendu": False,
+        "famille": ["devant"],
+        "etiquette_origine": None,
+    },
+    {
+        "pair_id": "2:d3",
+        "claim_id": "2",
+        "doc_id": "d3",
+        "document_attendu": True,
+        "famille": ["attendu"],
+        "etiquette_origine": "CONTRADICT",
+    },
+    {
+        "pair_id": "2:d4",
+        "claim_id": "2",
+        "doc_id": "d4",
+        "document_attendu": False,
+        "famille": ["devant"],
+        "etiquette_origine": None,
+    },
 ]
 PAIRS_BY_ID = {p["pair_id"]: p for p in PAIRS}
 
@@ -132,6 +163,107 @@ def test_cause_summary_counts_by_cause_including_zero():
         "inférence": 0,
         "sujet voisin": 0,
     }
+
+
+# ---------------------------------------------------------------------------
+# EXE-125, critère 8 — tableau croisé verdict / étiquette d'origine
+# ---------------------------------------------------------------------------
+
+
+def test_expected_crosstab_restricted_to_attendu_pairs_with_valid_verdict():
+    # Seuls d1 et d3 sont attendus : d1 SUPPORTS/SUPPORT (accord), d3
+    # NOT_ENOUGH_INFO/CONTRADICT (désaccord). d2 et d4 sont « devant », ignorés.
+    crosstab = expected_crosstab(LOCAL_JUDGMENTS, PAIRS_BY_ID)
+
+    assert crosstab["confusion"] == {
+        ("SUPPORTS", "SUPPORT"): 1,
+        ("NOT_ENOUGH_INFO", "CONTRADICT"): 1,
+    }
+    assert crosstab["n_valid"] == 2
+    assert crosstab["agreement"] == pytest.approx(0.5)
+
+
+def test_expected_crosstab_excludes_illisible_and_citation_introuvable():
+    judgments = [
+        {"pair_id": "1:d1", "verdict": "illisible"},
+        {"pair_id": "2:d3", "verdict": "citation introuvable"},
+    ]
+
+    crosstab = expected_crosstab(judgments, PAIRS_BY_ID)
+
+    assert crosstab["n_valid"] == 0
+    assert crosstab["agreement"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# EXE-125, critère 9 — documents classés devant
+# ---------------------------------------------------------------------------
+
+
+def test_devant_summary_counts_verdicts_and_responding_claims():
+    # Seuls d2 et d4 sont « devant » : d2 NOT_ENOUGH_INFO (claim 1), d4 REFUTES
+    # (claim 2, répond). d1 et d3 sont « attendu » seul, ignorés.
+    summary = devant_summary(LOCAL_JUDGMENTS, PAIRS_BY_ID)
+
+    assert summary["supports"] == 0
+    assert summary["refutes"] == 1
+    assert summary["not_enough_info"] == 1
+    assert summary["claims"] == ["2"]
+
+
+# ---------------------------------------------------------------------------
+# EXE-125, critère 10 — répartition des niveaux de lecture
+# ---------------------------------------------------------------------------
+
+LEVELED_JUDGMENTS = [
+    {
+        "pair_id": "1:d1",
+        "claim_id": "1",
+        "verdict": "SUPPORTS",
+        "level": "DIRECT",
+    },
+    {
+        "pair_id": "2:d3",
+        "claim_id": "2",
+        "verdict": "REFUTES",
+        "level": "VOCABULARY",
+    },
+    {
+        "pair_id": "1:d2",
+        "claim_id": "1",
+        "verdict": "SUPPORTS",
+        "level": "REASONING",
+    },
+    {
+        "pair_id": "2:d4",
+        "claim_id": "2",
+        "verdict": "NOT_ENOUGH_INFO",
+        "level": "NONE",
+    },
+]
+
+
+def test_level_distribution_on_attendu_restricted_to_support_or_contradict():
+    # d1 (attendu, SUPPORT, répond, DIRECT) compte ; d3 (attendu, CONTRADICT,
+    # répond, VOCABULARY) compte. Aucun autre document attendu dans ce jeu.
+    distribution = level_distribution(LEVELED_JUDGMENTS, PAIRS_BY_ID, "attendu")
+
+    assert distribution == {"DIRECT": 1, "VOCABULARY": 1, "REASONING": 0}
+
+
+def test_level_distribution_on_devant_ignores_origin_label():
+    # d2 (devant, répond, REASONING) et d4 (devant, NOT_ENOUGH_INFO -> ne
+    # répond pas, ignoré) : seul d2 compte.
+    distribution = level_distribution(LEVELED_JUDGMENTS, PAIRS_BY_ID, "devant")
+
+    assert distribution == {"DIRECT": 0, "VOCABULARY": 0, "REASONING": 1}
+
+
+def test_level_distribution_is_none_when_no_judgment_carries_a_level():
+    # Le juge par étapes ne rend jamais de niveau (EXE-121, ne change pas).
+    distribution = level_distribution(LOCAL_JUDGMENTS, PAIRS_BY_ID, "attendu")
+
+    assert distribution is None
 
 
 # ---------------------------------------------------------------------------
