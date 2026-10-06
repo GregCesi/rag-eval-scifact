@@ -397,7 +397,11 @@ def _render_reference_section(reference_run: str, rows: list[dict]) -> list[str]
         lines.append(
             f"| {row['run_name']} | {row['diff_188']:+.4f} | {row['p_188']:.4f} |\n"
         )
-    lines.append("\n")
+    lines.append(
+        "\nLecture (`.claude/rules/methodologie.md`) : « avec plusieurs "
+        "dizaines de runs, des écarts « significatifs » apparaissent par "
+        "hasard. On lit les gros écarts, pas les 0,01. »\n\n"
+    )
     return lines
 
 

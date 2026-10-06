@@ -391,6 +391,29 @@ def test_write_report_for_campaign_adds_reference_section_only_when_named(
     assert "référence" in with_reference.lower()
 
 
+def test_write_report_for_campaign_cites_the_methodologie_reading_rule_verbatim(
+    _fab_campaign,
+):
+    """H3, EXE-142 : la phrase de lecture sous le tableau des écarts pointe
+    `.claude/rules/methodologie.md` sans en reformuler la règle."""
+    rule = " ".join(
+        Path(".claude/rules/methodologie.md").read_text(encoding="utf-8").split()
+    )
+    reading_rule = (
+        "avec plusieurs dizaines de runs, des écarts « significatifs » "
+        "apparaissent par hasard. On lit les gros écarts, pas les 0,01."
+    )
+    assert reading_rule in rule
+
+    content = category_report.write_report_for_campaign(
+        "fab-campagne", reference_run="strat-a-sans-reranker"
+    ).read_text(encoding="utf-8")
+    normalized_content = " ".join(content.split())
+
+    assert ".claude/rules/methodologie.md" in content
+    assert reading_rule in normalized_content
+
+
 # ---------------------------------------------------------------------------
 # EXE-142, critère 4 — niveaux de lecture par groupe, campagne nommée
 # ---------------------------------------------------------------------------
