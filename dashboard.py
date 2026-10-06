@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from transformers import AutoTokenizer
 
+from rag_eval_scifact import reading_levels
 from rag_eval_scifact.compare import load_run as load_run_file
 from rag_eval_scifact.origin_labels import (
     build_label_lookup,
@@ -24,6 +25,7 @@ from rag_eval_scifact.passage_detail import (
 from rag_eval_scifact.passage_detail import (
     load_passage_detail as load_passage_detail_file,
 )
+from rag_eval_scifact.report import load_campaign_runs
 from rag_eval_scifact.run_diff import (
     FILTER_LABELS,
     NOT_FOUND_RANK,
@@ -79,6 +81,19 @@ def load_tokenizer():
 def load_buckets(path: Path) -> dict:
     with open(path) as f:
         return json.load(f)
+
+
+@st.cache_data
+def load_reading_levels_goldens() -> list[dict] | None:
+    """Les 339 goldens niveau-de-lecture (EXE-137). `None` si un fichier
+    requis manque — la page le dit en une phrase, sans tableau ni diagramme."""
+    return reading_levels.load_goldens()
+
+
+@st.cache_data
+def load_v2_grid_runs() -> list[dict]:
+    """Les 34 runs de v2-grid, chargés une fois (H4, EXE-137)."""
+    return load_campaign_runs(reading_levels.CAMPAGNE)
 
 
 ANNOTATIONS_PATH = RESULTS_DIR / "v1-annotations.json"
@@ -450,6 +465,7 @@ def main():
             "Exploration interactive",
             "Analyse d'erreurs",
             "Comparer deux runs",
+            "Niveaux de lecture",
         ],
     )
 
@@ -471,6 +487,13 @@ def main():
         page_compare(
             buckets_data, corpus, label_by_pair, evidence_by_pair, categorie_by_qid
         )
+        return
+
+    # Comme « Comparer deux runs » (critère 1, EXE-137) : cette page ne
+    # dépend pas du run choisi dans la barre de gauche, elle s'ouvre même si
+    # aucun run n'est sélectionnable.
+    if page == "Niveaux de lecture":
+        page_reading_levels(corpus)
         return
 
     if selected_run is None:
@@ -1767,6 +1790,238 @@ def render_doc_text(
             f"</div>",
             unsafe_allow_html=True,
         )
+
+
+# ─────────────────────────────────────────────
+# PAGE 5 : NIVEAUX DE LECTURE
+# ─────────────────────────────────────────────
+def reading_levels_table_frames(
+    rows: list[dict],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Deux DataFrame alignées (mêmes lignes et colonnes, EXE-137, critère 3) :
+    le texte affiché (`trouvé/effectif`) et la part retrouvée, qui pilote la
+    couleur de fond sans être elle-même affichée."""
+    columns = [reading_levels.GROUP_LABELS[name] for name in reading_levels.GROUP_NAMES]
+    index = [row["run_name"] for row in rows]
+    display_df = pd.DataFrame(
+        {
+            reading_levels.GROUP_LABELS[name]: [
+                f"{row['counts'][name]['found']}/{row['counts'][name]['total']}"
+                for row in rows
+            ]
+            for name in reading_levels.GROUP_NAMES
+        },
+        index=index,
+        columns=columns,
+    )
+    rates_df = pd.DataFrame(
+        {
+            reading_levels.GROUP_LABELS[name]: [
+                reading_levels.group_rate(row, name) for row in rows
+            ]
+            for name in reading_levels.GROUP_NAMES
+        },
+        index=index,
+        columns=columns,
+    )
+    return display_df, rates_df
+
+
+def render_reading_levels_table(rows: list[dict]) -> None:
+    """Critère 3 : un tableau coloré, une ligne par run, une colonne par
+    groupe — la couleur encode la part retrouvée, le texte le compte brut."""
+    display_df, rates_df = reading_levels_table_frames(rows)
+    styled = display_df.style.background_gradient(
+        cmap="RdYlGn", gmap=rates_df.to_numpy(), vmin=0.0, vmax=1.0, axis=None
+    )
+    st.dataframe(styled, use_container_width=True, height=min(400, 40 + 35 * len(rows)))
+
+
+def render_reading_levels_comparison_chart(
+    rows: list[dict], run_names: list[str]
+) -> None:
+    """Critère 9 : diagramme en barres comparant les runs choisis, groupe par
+    groupe, au seuil courant."""
+    by_name = {row["run_name"]: row for row in rows}
+    fig = go.Figure()
+    for run_name in run_names:
+        row = by_name.get(run_name)
+        if row is None:
+            continue
+        fig.add_trace(
+            go.Bar(
+                name=run_name,
+                x=[reading_levels.GROUP_LABELS[g] for g in reading_levels.GROUP_NAMES],
+                y=[
+                    reading_levels.group_rate(row, g)
+                    for g in reading_levels.GROUP_NAMES
+                ],
+            )
+        )
+    fig.update_layout(
+        barmode="group",
+        title="Part retrouvée par groupe",
+        yaxis_title="Part retrouvée",
+        height=400,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_reranker_effect_chart(diff_rows: list[dict]) -> None:
+    """Critère 10 : écart avec − sans reranker, en nombre de goldens, par
+    groupe, pour chaque stratégie de base."""
+    fig = go.Figure()
+    for name in reading_levels.GROUP_NAMES:
+        fig.add_trace(
+            go.Bar(
+                name=reading_levels.GROUP_LABELS[name],
+                x=[row["base"] for row in diff_rows],
+                y=[row["diffs"][name] for row in diff_rows],
+            )
+        )
+    fig.update_layout(
+        barmode="group",
+        title="Effet du reranker (avec − sans), en nombre de goldens",
+        height=450,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_reading_levels_group_detail(rows: list[dict]) -> None:
+    """Critère 11 : une ligne par golden du groupe choisi — affirmation,
+    document, rang dans le run, verdict du juge, phrase citée et raison."""
+    for row in rows:
+        rank_text = (
+            f"rang {row['rank']}"
+            if row["rank"] is not None
+            else "hors des 100 premiers"
+        )
+        st.markdown(
+            f"**[{row['query_id']}] {row['claim_text']}**  \n"
+            f"`{row['doc_id']}` — {row['doc_title']}  \n"
+            f"{rank_text} — verdict du juge : {row['verdict'] or '—'}"
+        )
+        if row["evidence"]:
+            st.caption(f"« {row['evidence']} »")
+        if row["reason"]:
+            st.caption(row["reason"])
+        st.divider()
+
+
+def page_reading_levels(corpus: dict):
+    st.header("Niveaux de lecture")
+    st.caption(
+        "Pour chaque stratégie de v2-grid, quels goldens elle retrouve selon "
+        "le niveau de lecture donné par le juge Claude (campagne v3-juge)."
+    )
+
+    goldens = load_reading_levels_goldens()
+    if goldens is None:
+        st.info(
+            "`results/etiquettes-origine.json` ou "
+            "`results/v3-juge/jugements-claude.json` est absent : "
+            "cette page n'affiche ni tableau ni diagramme."
+        )
+        return
+
+    agreement = reading_levels.judge_agreement_with_annotators()
+    agreement_text = f"{agreement:.2%}" if agreement is not None else "indisponible"
+    st.caption(
+        "Niveaux issus d'un seul juge (Claude) ; accord de ce juge avec les "
+        f"étiquettes d'origine, sur les documents attendus : {agreement_text}. "
+        "Groupes direct, vocabulaire et raisonnement : 55 à 71 goldens."
+    )
+
+    categorie_choice = st.radio(
+        "Restreindre aux goldens",
+        ["Tous", "confirme", "contredit"],
+        horizontal=True,
+        key="reading_levels_categorie",
+    )
+    filtered_goldens = (
+        goldens
+        if categorie_choice == "Tous"
+        else reading_levels.filter_goldens_by_categorie(goldens, categorie_choice)
+    )
+
+    threshold_label = st.radio(
+        "Seuil",
+        reading_levels.THRESHOLD_LABELS,
+        index=reading_levels.THRESHOLD_LABELS.index(
+            reading_levels.DEFAULT_THRESHOLD_LABEL
+        ),
+        horizontal=True,
+        key="reading_levels_threshold",
+    )
+    threshold = reading_levels.THRESHOLD_RANKS[threshold_label]
+
+    runs = load_v2_grid_runs()
+    rows = reading_levels.build_table_rows(filtered_goldens, runs, threshold)
+
+    group_labels = [reading_levels.GROUP_LABELS[n] for n in reading_levels.GROUP_NAMES]
+    sort_label = st.selectbox(
+        "Trier par", group_labels, key="reading_levels_sort_column"
+    )
+    sort_group = next(
+        n
+        for n in reading_levels.GROUP_NAMES
+        if reading_levels.GROUP_LABELS[n] == sort_label
+    )
+    rows = reading_levels.sort_rows_by_group(rows, sort_group)
+
+    render_reading_levels_table(rows)
+
+    st.divider()
+    st.subheader("Comparer des runs, groupe par groupe")
+    all_run_names = [row["run_name"] for row in rows]
+    default_comparison = [
+        name
+        for name in reading_levels.DEFAULT_COMPARISON_RUN_NAMES
+        if name in all_run_names
+    ]
+    compared_runs = st.multiselect(
+        "Runs comparés (1 à 6)",
+        all_run_names,
+        default=default_comparison,
+        max_selections=6,
+        key="reading_levels_compared_runs",
+    )
+    if compared_runs:
+        render_reading_levels_comparison_chart(rows, compared_runs)
+
+    st.divider()
+    st.subheader("Effet du reranker")
+    diff_rows = reading_levels.reranker_diff_rows(filtered_goldens, runs, threshold)
+    render_reranker_effect_chart(diff_rows)
+
+    st.divider()
+    st.subheader("Détail d'un groupe")
+    col_run, col_group = st.columns(2)
+    with col_run:
+        detail_run_name = st.selectbox(
+            "Run", all_run_names, key="reading_levels_detail_run"
+        )
+    with col_group:
+        detail_group_label = st.selectbox(
+            "Groupe", group_labels, key="reading_levels_detail_group"
+        )
+    detail_group = next(
+        n
+        for n in reading_levels.GROUP_NAMES
+        if reading_levels.GROUP_LABELS[n] == detail_group_label
+    )
+
+    runs_by_name = {run["run_name"]: run for run in runs}
+    detail_run = runs_by_name.get(detail_run_name)
+    if detail_run is None:
+        return
+    detail_rows = reading_levels.build_group_detail_rows(
+        filtered_goldens, detail_run, detail_group, corpus
+    )
+    detail_rows = reading_levels.sort_rows_beyond_threshold_first(
+        detail_rows, threshold
+    )
+    render_reading_levels_group_detail(detail_rows)
 
 
 if __name__ == "__main__":
