@@ -91,9 +91,10 @@ def load_reading_levels_goldens() -> list[dict] | None:
 
 
 @st.cache_data
-def load_v2_grid_runs() -> list[dict]:
-    """Les 34 runs de v2-grid, chargés une fois (H4, EXE-137)."""
-    return load_campaign_runs(reading_levels.CAMPAGNE)
+def load_reading_levels_runs(campagne: str) -> list[dict]:
+    """Les runs d'une campagne, chargés une fois par campagne (H4, EXE-137 ;
+    généralisé à toute campagne, EXE-142)."""
+    return load_campaign_runs(campagne)
 
 
 ANNOTATIONS_PATH = RESULTS_DIR / "v1-annotations.json"
@@ -1932,6 +1933,14 @@ def page_reading_levels(corpus: dict):
         "Groupes direct, vocabulaire et raisonnement : 55 à 71 goldens."
     )
 
+    campaigns = list_campaign_dirs(RESULTS_DIR)
+    campagne = st.selectbox(
+        "Campagne",
+        campaigns,
+        index=campaigns.index(reading_levels.CAMPAGNE),
+        key="reading_levels_campagne",
+    )
+
     categorie_choice = st.radio(
         "Restreindre aux goldens",
         ["Tous", "confirme", "contredit"],
@@ -1955,7 +1964,7 @@ def page_reading_levels(corpus: dict):
     )
     threshold = reading_levels.THRESHOLD_RANKS[threshold_label]
 
-    runs = load_v2_grid_runs()
+    runs = load_reading_levels_runs(campagne)
     rows = reading_levels.build_table_rows(filtered_goldens, runs, threshold)
 
     group_labels = [reading_levels.GROUP_LABELS[n] for n in reading_levels.GROUP_NAMES]
@@ -1974,11 +1983,14 @@ def page_reading_levels(corpus: dict):
     st.divider()
     st.subheader("Comparer des runs, groupe par groupe")
     all_run_names = [row["run_name"] for row in rows]
-    default_comparison = [
-        name
-        for name in reading_levels.DEFAULT_COMPARISON_RUN_NAMES
-        if name in all_run_names
-    ]
+    if campagne == reading_levels.CAMPAGNE:
+        default_comparison = [
+            name
+            for name in reading_levels.DEFAULT_COMPARISON_RUN_NAMES
+            if name in all_run_names
+        ]
+    else:
+        default_comparison = all_run_names[:6]
     compared_runs = st.multiselect(
         "Runs comparés (1 à 6)",
         all_run_names,
@@ -1991,8 +2003,12 @@ def page_reading_levels(corpus: dict):
 
     st.divider()
     st.subheader("Effet du reranker")
-    diff_rows = reading_levels.reranker_diff_rows(filtered_goldens, runs, threshold)
-    render_reranker_effect_chart(diff_rows)
+    has_reranker = any(run["run_name"].endswith("-avec-reranker") for run in runs)
+    if has_reranker:
+        diff_rows = reading_levels.reranker_diff_rows(filtered_goldens, runs, threshold)
+        render_reranker_effect_chart(diff_rows)
+    else:
+        st.info(f"Aucun run avec reranker dans la campagne « {campagne} ».")
 
     st.divider()
     st.subheader("Détail d'un groupe")

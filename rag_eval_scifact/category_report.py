@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from rag_eval_scifact import report as report_module
 from rag_eval_scifact.metrics import ndcg_at_k
 from rag_eval_scifact.report import load_campaign_runs
 from rag_eval_scifact.stats import paired_permutation_test
@@ -21,6 +22,12 @@ V2_GRID_DIR = Path("results") / CAMPAGNE
 ORIGIN_LABELS_PATH = Path("results/etiquettes-origine.json")
 
 CATEGORY_NAMES = ("confirme", "contredit", "sans_preuve")
+
+
+class NoRunsFound(Exception):
+    """Levée par `write_report_for_campaign` quand la campagne nommée n'a
+    aucun run (EXE-142, critère 6)."""
+
 
 # Graine et nombre de permutations fixes (même convention que `report.py`,
 # EXE-91 H3) : un rapport regénéré sur les mêmes fichiers rend le même texte.
@@ -237,21 +244,17 @@ def reranker_effect_rows(
     return rows
 
 
-def render_category_report(
-    rank_rows: dict[str, list[dict]],
-    ndcg_rows: list[dict],
-    reranker_rows: list[dict],
-) -> str:
-    """Rend le rapport markdown. Aucun mot hors noms de run/stratégie et chiffres."""
-    lines: list[str] = []
+CATEGORY_TITLES = {
+    "confirme": "confirme",
+    "contredit": "contredit",
+    "sans_preuve": "sans preuve",
+}
 
-    category_titles = {
-        "confirme": "confirme",
-        "contredit": "contredit",
-        "sans_preuve": "sans preuve",
-    }
+
+def _render_rank_sections(rank_rows: dict[str, list[dict]]) -> list[str]:
+    lines: list[str] = []
     for categorie in CATEGORY_NAMES:
-        lines.append(f"## {category_titles[categorie]}\n\n")
+        lines.append(f"## {CATEGORY_TITLES[categorie]}\n\n")
         lines.append("| run | n | rang 1 | top 10 | top 100 |\n")
         lines.append("|---|---|---|---|---|\n")
         for row in rank_rows[categorie]:
@@ -260,36 +263,59 @@ def render_category_report(
                 f"| {row['rang1']:.4f} | {row['top10']:.4f} | {row['top100']:.4f} |\n"
             )
         lines.append("\n")
+    return lines
 
-    lines.append("## nDCG@10 par ensemble de claims\n\n")
-    lines.append(
-        "| run | 300 claims | 188 claims avec preuve | 112 claims sans preuve |\n"
-    )
-    lines.append("|---|---|---|---|\n")
+
+def _render_ndcg_section(ndcg_rows: list[dict]) -> list[str]:
+    lines: list[str] = [
+        "## nDCG@10 par ensemble de claims\n\n",
+        "| run | 300 claims | 188 claims avec preuve | 112 claims sans preuve |\n",
+        "|---|---|---|---|\n",
+    ]
     for row in ndcg_rows:
         lines.append(
             f"| {row['run_name']} | {row['300']:.4f} "
             f"| {row['188_avec_preuve']:.4f} | {row['112_sans_preuve']:.4f} |\n"
         )
     lines.append("\n")
+    return lines
 
-    lines.append("## Effet du reranker (avec − sans), par stratégie de base\n\n")
-    lines.append(
-        "| stratégie | Δ nDCG@10 (188 avec preuve) | p (188) "
-        "| Δ nDCG@10 (112 sans preuve) | p (112) |\n"
-    )
-    lines.append("|---|---|---|---|---|\n")
+
+def _render_reranker_section(reranker_rows: list[dict]) -> list[str]:
+    lines: list[str] = [
+        "## Effet du reranker (avec − sans), par stratégie de base\n\n",
+        (
+            "| stratégie | Δ nDCG@10 (188 avec preuve) | p (188) "
+            "| Δ nDCG@10 (112 sans preuve) | p (112) |\n"
+        ),
+        "|---|---|---|---|---|\n",
+    ]
     for row in reranker_rows:
         lines.append(
             f"| {row['base']} | {row['diff_188']:+.4f} | {row['p_188']:.4f} "
             f"| {row['diff_112']:+.4f} | {row['p_112']:.4f} |\n"
         )
+    return lines
 
+
+def render_category_report(
+    rank_rows: dict[str, list[dict]],
+    ndcg_rows: list[dict],
+    reranker_rows: list[dict],
+) -> str:
+    """Rend le rapport markdown. Aucun mot hors noms de run/stratégie et chiffres."""
+    lines: list[str] = []
+    lines += _render_rank_sections(rank_rows)
+    lines += _render_ndcg_section(ndcg_rows)
+    lines += _render_reranker_section(reranker_rows)
     return "".join(lines)
 
 
 def write_report() -> Path:
-    """Écrit `results/v2-grid/RAPPORT-PAR-CATEGORIE.md` et renvoie son chemin."""
+    """Écrit `results/v2-grid/RAPPORT-PAR-CATEGORIE.md` et renvoie son chemin.
+
+    Chemin historique (EXE-124), inchangé par EXE-142 — critère 2 : une
+    commande sans campagne nommée régénère ce rapport à l'identique."""
     origin_labels = load_origin_labels(ORIGIN_LABELS_PATH)
     runs = load_campaign_runs(CAMPAGNE)
 
@@ -317,6 +343,190 @@ def write_report() -> Path:
     content = render_category_report(rank_rows, ndcg_rows, reranker_rows)
 
     report_path = V2_GRID_DIR / "RAPPORT-PAR-CATEGORIE.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(content, encoding="utf-8")
+    return report_path
+
+
+def reference_diff_rows(
+    runs: list[dict],
+    reference_run: str,
+    expected_188: dict[str, set[str]],
+    n_permutations: int = N_PERMUTATIONS,
+    seed: int = SEED,
+) -> list[dict]:
+    """EXE-142, critère 3 : pour chaque run autre que `reference_run`, écart
+    de nDCG@10 (ce run − référence) sur les 188 claims avec preuve, et la
+    p-value du test de randomisation apparié déjà codé à la main."""
+    runs_by_name = {r["run_name"]: r for r in runs}
+    reference = runs_by_name[reference_run]
+    qids = sorted(expected_188)
+    reference_values = ndcg_per_query_values(reference, expected_188)
+
+    rows = []
+    for run_data in runs:
+        if run_data["run_name"] == reference_run:
+            continue
+        values = ndcg_per_query_values(run_data, expected_188)
+        cmp = paired_permutation_test(
+            [reference_values[q] for q in qids],
+            [values[q] for q in qids],
+            n_permutations=n_permutations,
+            seed=seed,
+        )
+        rows.append(
+            {
+                "run_name": run_data["run_name"],
+                "diff_188": cmp["mean_diff"],
+                "p_188": cmp["p_value"],
+            }
+        )
+    return rows
+
+
+def _render_reference_section(reference_run: str, rows: list[dict]) -> list[str]:
+    lines: list[str] = [
+        (
+            f"## Écart de nDCG@10 face à la référence {reference_run} "
+            "(188 claims avec preuve)\n\n"
+        ),
+        "| run | Δ nDCG@10 | p |\n",
+        "|---|---|---|\n",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {row['run_name']} | {row['diff_188']:+.4f} | {row['p_188']:.4f} |\n"
+        )
+    lines.append("\n")
+    return lines
+
+
+def group_rank_rows(runs: list[dict]) -> list[dict]:
+    """EXE-142, critère 4 : pour chaque run, le `found_counts` de
+    `reading_levels` aux seuils 5 et 10 premiers, par groupe de la page
+    « Niveaux de lecture ». Import différé : `reading_levels` importe déjà
+    `category_report.group_runs_by_base_strategy`."""
+    from rag_eval_scifact import reading_levels
+
+    goldens = reading_levels.load_goldens(
+        reading_levels.ORIGIN_LABELS_PATH, reading_levels.JUGEMENTS_PATH
+    )
+    threshold_5 = reading_levels.THRESHOLD_RANKS["5 premiers"]
+    threshold_10 = reading_levels.THRESHOLD_RANKS["10 premiers"]
+    return [
+        {
+            "run_name": run["run_name"],
+            "counts_5": reading_levels.found_counts(goldens, run, threshold_5),
+            "counts_10": reading_levels.found_counts(goldens, run, threshold_10),
+        }
+        for run in runs
+    ]
+
+
+def _render_group_section(group_rows: list[dict]) -> list[str]:
+    from rag_eval_scifact import reading_levels
+
+    lines: list[str] = ["## Niveaux de lecture par groupe\n\n"]
+    for row in group_rows:
+        lines.append(f"### {row['run_name']}\n\n")
+        lines.append(
+            "| groupe | 5 premiers | part (5 premiers) "
+            "| 10 premiers | part (10 premiers) |\n"
+        )
+        lines.append("|---|---|---|---|---|\n")
+        for name in reading_levels.GROUP_NAMES:
+            c5, c10 = row["counts_5"][name], row["counts_10"][name]
+            rate5 = c5["found"] / c5["total"] if c5["total"] else 0.0
+            rate10 = c10["found"] / c10["total"] if c10["total"] else 0.0
+            lines.append(
+                f"| {reading_levels.GROUP_LABELS[name]} "
+                f"| {c5['found']}/{c5['total']} | {rate5:.4f} "
+                f"| {c10['found']}/{c10['total']} | {rate10:.4f} |\n"
+            )
+        lines.append("\n")
+    return lines
+
+
+def render_category_report_for_campaign(
+    campagne: str,
+    rank_rows: dict[str, list[dict]],
+    ndcg_rows: list[dict],
+    reranker_rows: list[dict] | None,
+    reference_run: str | None,
+    reference_rows: list[dict] | None,
+    group_rows: list[dict],
+) -> str:
+    """EXE-142 : rapport par catégorie d'une campagne nommée, avec les
+    niveaux de lecture par groupe (critère 4), l'écart face à un run de
+    référence s'il est nommé (critère 3), et la section reranker omise
+    si aucun run de la campagne ne la porte (critère 5)."""
+    lines: list[str] = [f"Campagne : {campagne}\n\n"]
+    lines += _render_rank_sections(rank_rows)
+    lines += _render_ndcg_section(ndcg_rows)
+    if reference_run is not None:
+        lines += _render_reference_section(reference_run, reference_rows or [])
+    if reranker_rows is not None:
+        lines += _render_reranker_section(reranker_rows)
+        lines.append("\n")
+    lines += _render_group_section(group_rows)
+    return "".join(lines)
+
+
+def write_report_for_campaign(campagne: str, reference_run: str | None = None) -> Path:
+    """EXE-142 : écrit `results/<campagne>/RAPPORT-PAR-CATEGORIE.md` pour une
+    campagne nommée (critère 1). Lève `NoRunsFound` sans rien écrire si la
+    campagne n'a aucun run (critère 6)."""
+    runs = load_campaign_runs(campagne)
+    if not runs:
+        raise NoRunsFound(campagne)
+
+    origin_labels = load_origin_labels(ORIGIN_LABELS_PATH)
+    expected_rank = expected_docs_for_rank_metrics(origin_labels)
+    expected_ndcg = expected_docs_for_ndcg_sets(origin_labels)
+
+    rank_rows = {
+        categorie: [
+            {
+                "run_name": run["run_name"],
+                **category_rank_rates(run, expected_rank)[categorie],
+            }
+            for run in runs
+        ]
+        for categorie in CATEGORY_NAMES
+    }
+    ndcg_rows = [
+        {"run_name": run["run_name"], **ndcg_set_values(run, expected_ndcg)}
+        for run in runs
+    ]
+
+    reference_rows = None
+    if reference_run is not None:
+        reference_rows = reference_diff_rows(
+            runs, reference_run, expected_ndcg["188_avec_preuve"]
+        )
+
+    has_reranker = any(r["run_name"].endswith("-avec-reranker") for r in runs)
+    reranker_rows = (
+        reranker_effect_rows(
+            runs, expected_ndcg["188_avec_preuve"], expected_ndcg["112_sans_preuve"]
+        )
+        if has_reranker
+        else None
+    )
+
+    group_rows = group_rank_rows(runs)
+
+    content = render_category_report_for_campaign(
+        campagne,
+        rank_rows,
+        ndcg_rows,
+        reranker_rows,
+        reference_run,
+        reference_rows,
+        group_rows,
+    )
+
+    report_path = report_module.RESULTS_DIR / campagne / "RAPPORT-PAR-CATEGORIE.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(content, encoding="utf-8")
     return report_path

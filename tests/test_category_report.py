@@ -123,6 +123,30 @@ def _campaign(tmp_path, monkeypatch):
     return results_dir
 
 
+@pytest.fixture
+def _fab_campaign(tmp_path, monkeypatch):
+    """Campagne fabriquée nommée `fab-campagne`, distincte de v2-grid (EXE-142,
+    H2 : cette fiche ne dépend pas des deux autres fiches de la campagne)."""
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(report_module, "RESULTS_DIR", results_dir)
+    monkeypatch.setattr(
+        category_report, "ORIGIN_LABELS_PATH", results_dir / "etiquettes-origine.json"
+    )
+
+    (results_dir / "fab-campagne").mkdir(parents=True)
+    (results_dir / "etiquettes-origine.json").write_text(
+        json.dumps(ORIGIN_LABELS), encoding="utf-8"
+    )
+    fab_runs = [SANS_A, AVEC_A, SANS_B, AVEC_B]
+    for run_data in fab_runs:
+        _write_gz(
+            results_dir / "fab-campagne" / f"{run_data['run_name']}-20261006.json.gz",
+            run_data,
+        )
+
+    return results_dir, fab_runs
+
+
 # ---------------------------------------------------------------------------
 # Critère 3 (relu ici) — regroupement des claims par catégorie
 # ---------------------------------------------------------------------------
@@ -285,3 +309,167 @@ def test_write_report_regenerates_identically_when_runs_are_unchanged(_campaign)
     second = category_report.write_report().read_text(encoding="utf-8")
 
     assert first == second
+
+
+def test_write_report_matches_the_committed_v2_grid_report_byte_for_byte():
+    """EXE-142, critère 2, sur les fichiers réels : la commande sans campagne
+    nommée régénère `results/v2-grid/RAPPORT-PAR-CATEGORIE.md` à l'identique."""
+    path = Path("results/v2-grid/RAPPORT-PAR-CATEGORIE.md")
+    before = path.read_text(encoding="utf-8")
+
+    written = category_report.write_report()
+    after = written.read_text(encoding="utf-8")
+
+    assert written == path
+    assert after == before
+
+
+# ---------------------------------------------------------------------------
+# EXE-142, critère 1 — une campagne nommée s'écrit dans son propre dossier
+# ---------------------------------------------------------------------------
+
+
+def test_write_report_for_campaign_writes_under_the_named_campaign_dir(_fab_campaign):
+    results_dir, _ = _fab_campaign
+
+    path = category_report.write_report_for_campaign("fab-campagne")
+
+    assert path == results_dir / "fab-campagne" / "RAPPORT-PAR-CATEGORIE.md"
+    content = path.read_text(encoding="utf-8")
+    assert "Campagne : fab-campagne" in content
+    for name in ("strat-a-sans-reranker", "strat-a-avec-reranker"):
+        assert name in content
+
+
+# ---------------------------------------------------------------------------
+# EXE-142, critère 3 — écart de nDCG@10 face à un run de référence
+# ---------------------------------------------------------------------------
+
+
+def test_reference_diff_rows_matches_paired_permutation_test_called_directly():
+    expected_sets = category_report.expected_docs_for_ndcg_sets(ORIGIN_LABELS)
+    expected_188 = expected_sets["188_avec_preuve"]
+    runs = [SANS_A, AVEC_A, SANS_B]
+
+    rows = category_report.reference_diff_rows(
+        runs, "strat-a-sans-reranker", expected_188
+    )
+
+    by_name = {r["run_name"]: r for r in rows}
+    assert set(by_name) == {"strat-a-avec-reranker", "strat-b-sans-reranker"}
+
+    qids = sorted(expected_188)
+    reference_values = category_report.ndcg_per_query_values(SANS_A, expected_188)
+    values_avec_a = category_report.ndcg_per_query_values(AVEC_A, expected_188)
+    expected_cmp = paired_permutation_test(
+        [reference_values[q] for q in qids],
+        [values_avec_a[q] for q in qids],
+        n_permutations=category_report.N_PERMUTATIONS,
+        seed=category_report.SEED,
+    )
+    assert by_name["strat-a-avec-reranker"]["diff_188"] == pytest.approx(
+        expected_cmp["mean_diff"]
+    )
+    assert by_name["strat-a-avec-reranker"]["p_188"] == pytest.approx(
+        expected_cmp["p_value"]
+    )
+
+
+def test_write_report_for_campaign_adds_reference_section_only_when_named(
+    _fab_campaign,
+):
+    without_reference = category_report.write_report_for_campaign(
+        "fab-campagne"
+    ).read_text(encoding="utf-8")
+    assert "référence" not in without_reference.lower()
+
+    with_reference = category_report.write_report_for_campaign(
+        "fab-campagne", reference_run="strat-a-sans-reranker"
+    ).read_text(encoding="utf-8")
+    assert "strat-a-sans-reranker" in with_reference
+    assert "strat-a-avec-reranker" in with_reference
+    assert "référence" in with_reference.lower()
+
+
+# ---------------------------------------------------------------------------
+# EXE-142, critère 4 — niveaux de lecture par groupe, campagne nommée
+# ---------------------------------------------------------------------------
+
+
+def test_group_rank_rows_matches_reading_levels_found_counts_called_directly(
+    _fab_campaign,
+):
+    _, fab_runs = _fab_campaign
+    from rag_eval_scifact import reading_levels
+
+    goldens = reading_levels.load_goldens(
+        reading_levels.ORIGIN_LABELS_PATH, reading_levels.JUGEMENTS_PATH
+    )
+
+    rows = category_report.group_rank_rows(fab_runs)
+
+    by_name = {r["run_name"]: r for r in rows}
+    sample_run = fab_runs[0]
+    expected_5 = reading_levels.found_counts(goldens, sample_run, 5)
+    expected_10 = reading_levels.found_counts(goldens, sample_run, 10)
+    assert by_name[sample_run["run_name"]]["counts_5"] == expected_5
+    assert by_name[sample_run["run_name"]]["counts_10"] == expected_10
+
+
+def test_write_report_for_campaign_includes_a_group_section_with_both_thresholds(
+    _fab_campaign,
+):
+    content = category_report.write_report_for_campaign("fab-campagne").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Niveaux de lecture par groupe" in content
+    assert "Direct" in content
+    assert "Vocabulaire" in content
+
+
+# ---------------------------------------------------------------------------
+# EXE-142, critère 5 — pas de section reranker sans aucun run avec reranker
+# ---------------------------------------------------------------------------
+
+
+def test_write_report_for_campaign_omits_reranker_section_without_any_reranker_run(
+    tmp_path, monkeypatch
+):
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(report_module, "RESULTS_DIR", results_dir)
+    monkeypatch.setattr(
+        category_report, "ORIGIN_LABELS_PATH", results_dir / "etiquettes-origine.json"
+    )
+    (results_dir / "campagne-simple").mkdir(parents=True)
+    (results_dir / "etiquettes-origine.json").write_text(
+        json.dumps(ORIGIN_LABELS), encoding="utf-8"
+    )
+    _write_gz(
+        results_dir / "campagne-simple" / f"{SANS_A['run_name']}-20261006.json.gz",
+        SANS_A,
+    )
+
+    content = category_report.write_report_for_campaign("campagne-simple").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Effet du reranker" not in content
+
+
+# ---------------------------------------------------------------------------
+# EXE-142, critère 6 — campagne nommée sans aucun run
+# ---------------------------------------------------------------------------
+
+
+def test_write_report_for_campaign_raises_when_the_campaign_has_no_runs(
+    tmp_path, monkeypatch
+):
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(report_module, "RESULTS_DIR", results_dir)
+    (results_dir / "vide").mkdir(parents=True)
+
+    with pytest.raises(category_report.NoRunsFound):
+        category_report.write_report_for_campaign("vide")
+
+    assert not (results_dir / "vide" / "RAPPORT-PAR-CATEGORIE.md").exists()
