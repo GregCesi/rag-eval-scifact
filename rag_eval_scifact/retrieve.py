@@ -20,7 +20,9 @@ from typing import Any
 
 import chromadb
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
+from transformers import AutoModel, AutoTokenizer
 
 from rag_eval_scifact.bm25 import build_bm25_index, score_queries
 from rag_eval_scifact.cache import get_document_embeddings, get_ranking
@@ -325,8 +327,44 @@ def _detect_device() -> str:
     return "cpu"
 
 
-def _default_embedder(
+def _cls_pooling_embedder(
     model_name: str, max_seq_length: int, batch_size: int = 64
+) -> Callable[[list[str]], np.ndarray]:
+    """Encode via le premier jeton (CLS), jamais une moyenne (H2, EXE-140).
+
+    Pour un `transformers.AutoModel` brut sans config `sentence-transformers`
+    (MedCPT). Chargé paresseusement, au plus une fois ; une campagne de test
+    fabrique `AutoModel`/`AutoTokenizer` pour ne jamais charger de modèle réel.
+    """
+    model_box: dict[str, Any] = {}
+
+    def _embed(texts: list[str]) -> np.ndarray:
+        if "model" not in model_box:
+            model_box["tokenizer"] = AutoTokenizer.from_pretrained(model_name)
+            model_box["model"] = AutoModel.from_pretrained(model_name).eval()
+        tokenizer = model_box["tokenizer"]
+        model = model_box["model"]
+
+        vectors = []
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            encoded = tokenizer(
+                batch,
+                truncation=True,
+                padding=True,
+                max_length=max_seq_length,
+                return_tensors="pt",
+            )
+            with torch.no_grad():
+                output = model(**encoded)
+            vectors.append(output.last_hidden_state[:, 0, :].numpy())
+        return np.concatenate(vectors, axis=0).astype(np.float32)
+
+    return _embed
+
+
+def _default_embedder(
+    model_name: str, max_seq_length: int, batch_size: int = 64, pooling: str = "mean"
 ) -> Callable[[list[str]], np.ndarray]:
     """Encode avec un `SentenceTransformer` chargé paresseusement, au plus une fois.
 
@@ -334,7 +372,12 @@ def _default_embedder(
     jamais charger de modèle réel — voir `retrieve_campaign`. `batch_size`
     (valeur de configuration, EXE-94) : 64 reproduit v1 (MiniLM) ; un modèle à
     fenêtre longue sature la mémoire à cette taille sur des documents longs.
+    `pooling` (EXE-140) : `"cls"` délègue à `_cls_pooling_embedder` (MedCPT,
+    sans config sentence-transformers) ; `"mean"` (défaut) ne change rien.
     """
+    if pooling == "cls":
+        return _cls_pooling_embedder(model_name, max_seq_length, batch_size)
+
     model_box: dict[str, SentenceTransformer] = {}
 
     def _embed(texts: list[str]) -> np.ndarray:
@@ -348,6 +391,77 @@ def _default_embedder(
         return np.array(embeddings, dtype=np.float32)
 
     return _embed
+
+
+def _ranking_unit_with_query_model(
+    unit: str, model_name: str, query_model_name: str | None
+) -> str:
+    """Distingue le cache de classement quand le modèle de requête diffère de
+    celui des documents (EXE-140, double encodeur type MedCPT) : deux runs
+    qui partagent `model_name` mais pas `query_model_name` ne doivent jamais
+    se relire l'un l'autre, alors que les embeddings de documents (indépendants
+    du modèle de requête) restent, eux, rangés par `model_name` seul.
+    """
+    if query_model_name and query_model_name != model_name:
+        return f"{unit}-qm-{query_model_name.replace('/', '_')}"
+    return unit
+
+
+def essai_embedding(
+    corpus: list[dict],
+    model_name: str,
+    max_seq_length: int,
+    unit: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    batch_size: int = 64,
+    pooling: str = "mean",
+    sample_size: int = 50,
+    embedder: Callable[[list[str]], np.ndarray] | None = None,
+    offsets_fn: Callable[[str], list[tuple[int, int]]] | None = None,
+    clock: Callable[[], float] = time.perf_counter,
+) -> dict[str, float]:
+    """Essai rapide (EXE-140 critère 12) : encode les `sample_size` premiers
+    documents du corpus (découpés en passages si `unit == "passages"`),
+    chronomètre l'encodage et l'extrapole au corpus entier.
+
+    N'écrit jamais de fichier de résultats ni de run MLflow — ce n'est pas un
+    run de campagne, juste une mesure de durée avant d'en lancer un long.
+    `embedder` et `offsets_fn` injectables (tests) ; sans eux, les mêmes
+    constructeurs par défaut que `retrieve_campaign` (aucun modèle chargé
+    tant qu'ils ne sont pas appelés).
+    """
+    sample = corpus[:sample_size]
+    doc_ids = [d["_id"] for d in sample]
+    doc_texts = [d["title"] + " " + d["text"] for d in sample]
+
+    if unit == "passages":
+        offsets = offsets_fn or default_offsets_fn(model_name)
+        passages = [
+            passage
+            for doc_id, text in zip(doc_ids, doc_texts)
+            for passage in chunk_text(doc_id, text, chunk_size, chunk_overlap, offsets)
+        ]
+        texts = [p.text for p in passages]
+    else:
+        texts = doc_texts
+
+    embed = embedder or _default_embedder(
+        model_name, max_seq_length, batch_size, pooling
+    )
+
+    start = clock()
+    embed(texts)
+    duration_seconds = clock() - start
+
+    n_sample = len(sample) or 1
+    extrapolated_minutes = duration_seconds * (len(corpus) / n_sample) / 60
+
+    return {
+        "n_units": float(len(texts)),
+        "duration_seconds": duration_seconds,
+        "extrapolated_minutes": extrapolated_minutes,
+    }
 
 
 def retrieve_campaign(
@@ -368,7 +482,11 @@ def retrieve_campaign(
     rrf_k: int = 60,
     query_instruction: str = "",
     batch_size: int = 64,
+    query_model_name: str | None = None,
+    query_max_seq_length: int | None = None,
+    pooling: str = "mean",
     embedder: Callable[[list[str]], np.ndarray] | None = None,
+    query_embedder: Callable[[list[str]], np.ndarray] | None = None,
     token_counter: Callable[[list[str]], list[int]] | None = None,
     offsets_fn: Callable[[str], list[tuple[int, int]]] | None = None,
     corpus_path: Path = CORPUS_PATH,
@@ -422,6 +540,18 @@ def retrieve_campaign(
     `query_instruction` (EXE-94 critère 2) se préfixe à chaque texte de
     requête avant l'encodage dense ; les documents n'en reçoivent jamais.
     Chaîne vide (défaut, MiniLM) : aucun préfixe, comportement v1 inchangé.
+
+    `query_model_name`, `query_max_seq_length` et `pooling` (EXE-140) : double
+    encodeur (MedCPT, H2) — un modèle distinct encode les requêtes, avec sa
+    propre fenêtre. `query_model_name` absent ou égal à `model_name` (toutes
+    les stratégies hors double encodeur) : aucun second modèle construit, le
+    même `embed` sert aux documents et aux requêtes, comme avant ce champ.
+    `query_embedder` (injectable, tests) prime sur ce choix. Le cache des
+    embeddings de documents reste rangé par `model_name` seul (jamais par le
+    modèle de requête, qui n'y entre pas) ; le classement de premier étage
+    distingue en plus le modèle de requête quand il diffère, pour ne jamais
+    confondre deux runs qui partagent le modèle documents mais pas le modèle
+    requêtes.
     """
     dataset_hash = compute_dataset_hash(corpus_path)
     print(f"  dataset_hash = {dataset_hash[:30]}...")
@@ -432,7 +562,22 @@ def retrieve_campaign(
     doc_ids = [doc["_id"] for doc in docs]
     doc_texts = [doc["title"] + " " + doc["text"] for doc in docs]
 
-    embed = embedder or _default_embedder(model_name, max_seq_length, batch_size)
+    embed = embedder or _default_embedder(
+        model_name, max_seq_length, batch_size, pooling
+    )
+    if query_embedder is not None:
+        query_embed = query_embedder
+    elif embedder is not None:
+        query_embed = embedder
+    elif query_model_name and query_model_name != model_name:
+        query_embed = _default_embedder(
+            query_model_name,
+            query_max_seq_length or max_seq_length,
+            batch_size,
+            pooling,
+        )
+    else:
+        query_embed = embed
     timings = {"indexing_duration_seconds": 0.0, "retrieval_duration_seconds": 0.0}
     stats: dict[str, float] = {}
 
@@ -455,7 +600,11 @@ def retrieve_campaign(
             retriever_name="dense",
             query_instruction=query_instruction,
             batch_size=batch_size,
+            query_model_name=query_model_name,
+            query_max_seq_length=query_max_seq_length,
+            pooling=pooling,
             embedder=embedder,
+            query_embedder=query_embedder,
             token_counter=token_counter,
             offsets_fn=offsets_fn,
             corpus_path=corpus_path,
@@ -593,7 +742,9 @@ def retrieve_campaign(
         stats["device"] = _detect_device()
 
         chunking_unit = f"passages-{chunk_size}-{chunk_overlap}"
-        ranking_unit = f"{chunking_unit}-{grouping}-{grouping_top_n}"
+        ranking_unit = _ranking_unit_with_query_model(
+            f"{chunking_unit}-{grouping}-{grouping_top_n}", model_name, query_model_name
+        )
 
         def _compute_ranking() -> list[dict]:
             def _timed_embed_passages() -> np.ndarray:
@@ -616,7 +767,7 @@ def retrieve_campaign(
             query_texts = [q["text"] for q in queries]
             if query_instruction:
                 query_texts = [query_instruction + t for t in query_texts]
-            query_embeddings = embed(query_texts)
+            query_embeddings = query_embed(query_texts)
             ranked = _rank_top_k_grouped(
                 queries,
                 passage_ids,
@@ -678,7 +829,7 @@ def retrieve_campaign(
             query_texts = [q["text"] for q in queries]
             if query_instruction:
                 query_texts = [query_instruction + t for t in query_texts]
-            query_embeddings = embed(query_texts)
+            query_embeddings = query_embed(query_texts)
             ranked = _rank_top_k(
                 queries, doc_ids, doc_embeddings, query_embeddings, top_k
             )
@@ -703,7 +854,9 @@ def retrieve_campaign(
             top_k,
             split,
             _compute_ranking,
-            unit="document",
+            unit=_ranking_unit_with_query_model(
+                "document", model_name, query_model_name
+            ),
         )
 
     results = [

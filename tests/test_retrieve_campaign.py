@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 
 import rag_eval_scifact.retrieve as retrieve_module
-from rag_eval_scifact.retrieve import retrieve_campaign
+from rag_eval_scifact.retrieve import essai_embedding, retrieve_campaign
 
 TOP_K = 5
 MODEL = "fake-model"
@@ -923,3 +924,273 @@ def test_indexing_duration_is_zero_when_ranking_cache_serves(tmp_path):
     )
 
     assert stats["indexing_duration_seconds"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 — double encodeur (MedCPT) : un modèle pour les documents, un autre
+# pour les requêtes
+# ---------------------------------------------------------------------------
+
+
+def test_query_embedder_is_used_only_for_queries(tmp_path):
+    doc_calls: list[int] = []
+    query_calls: list[int] = []
+
+    def _doc_embed(texts):
+        doc_calls.append(len(texts))
+        return np.ones((len(texts), 2), dtype=np.float32)
+
+    def _query_embed(texts):
+        query_calls.append(len(texts))
+        return np.ones((len(texts), 2), dtype=np.float32)
+
+    results, qrels, _, _ = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_doc_embed,
+        query_embedder=_query_embed,
+        token_counter=_fake_token_counter(),
+    )
+
+    assert doc_calls == [5183]
+    assert query_calls == [300]
+    assert len(results) == len(qrels) == 300
+
+
+def test_without_query_embedder_the_single_embedder_serves_both(tmp_path):
+    """Comportement inchangé (toutes les stratégies hors double encodeur) :
+    sans `query_embedder` injecté, `embedder` sert aux documents comme aux
+    requêtes, comme avant ce ticket."""
+    seen: list = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_capturing_embedder(seen),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert len(seen) == 2  # un appel docs, un appel requêtes, même fonction
+
+
+def test_distinct_query_model_builds_a_separate_default_embedder(monkeypatch, tmp_path):
+    """Sans `embedder`/`query_embedder` injectés (mode réel), un `query_model`
+    distinct du modèle documents fait construire un second embedder par
+    défaut, avec sa propre fenêtre (H2 : 64 côté requête, 512 côté document
+    pour MedCPT) — jamais le même objet SentenceTransformer rechargé."""
+    built: list[tuple[str, int, str]] = []
+
+    def _fake_default_embedder(
+        model_name, max_seq_length, batch_size=64, pooling="mean"
+    ):
+        built.append((model_name, max_seq_length, pooling))
+        return lambda texts: np.ones((len(texts), 2), dtype=np.float32)
+
+    monkeypatch.setattr(retrieve_module, "_default_embedder", _fake_default_embedder)
+
+    retrieve_campaign(
+        top_k=1,
+        model_name="ncbi/MedCPT-Article-Encoder",
+        max_seq_length=512,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        query_model_name="ncbi/MedCPT-Query-Encoder",
+        query_max_seq_length=64,
+        pooling="cls",
+        token_counter=_fake_token_counter(),
+    )
+
+    assert ("ncbi/MedCPT-Article-Encoder", 512, "cls") in built
+    assert ("ncbi/MedCPT-Query-Encoder", 64, "cls") in built
+
+
+def test_same_query_model_builds_the_default_embedder_once(monkeypatch, tmp_path):
+    """Sans `query_model` distinct (toutes les stratégies hors double
+    encodeur), le modèle par défaut n'est construit qu'une fois — pas de
+    second chargement inutile."""
+    built: list[str] = []
+
+    def _fake_default_embedder(
+        model_name, max_seq_length, batch_size=64, pooling="mean"
+    ):
+        built.append(model_name)
+        return lambda texts: np.ones((len(texts), 2), dtype=np.float32)
+
+    monkeypatch.setattr(retrieve_module, "_default_embedder", _fake_default_embedder)
+
+    retrieve_campaign(
+        top_k=1,
+        model_name="doc-model",
+        max_seq_length=512,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        token_counter=_fake_token_counter(),
+    )
+
+    assert built == ["doc-model"]
+
+
+def test_document_embedding_cache_is_never_reused_across_models_dual_encoder(tmp_path):
+    """Critère 11 — après un run avec un modèle de documents, un autre modèle
+    de documents recalcule les siens, double encodeur ou pas."""
+    minilm_doc_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(minilm_doc_calls),
+        token_counter=_fake_token_counter(),
+    )
+
+    medcpt_doc_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name="ncbi/MedCPT-Article-Encoder",
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(medcpt_doc_calls),
+        query_embedder=_fake_embedder([]),
+        token_counter=_fake_token_counter(),
+    )
+
+    assert len(medcpt_doc_calls) == 1  # aucun hit sur le cache MiniLM
+
+
+def test_cls_pooling_embedder_takes_the_first_token_not_the_mean(monkeypatch):
+    """H2 — MedCPT : le vecteur est celui du premier jeton (CLS), jamais une
+    moyenne. Classes `transformers` fabriquées : aucun modèle téléchargé."""
+    import torch
+
+    seen: dict = {}
+
+    class _FakeTokenizer:
+        def __call__(self, texts, truncation, padding, max_length, return_tensors):
+            seen["max_length"] = max_length
+            seen["texts"] = list(texts)
+            return {"input_ids": torch.zeros((len(texts), 4), dtype=torch.long)}
+
+    class _FakeAutoTokenizer:
+        @staticmethod
+        def from_pretrained(model_name):
+            return _FakeTokenizer()
+
+    class _FakeModel:
+        def eval(self):
+            return self
+
+        def __call__(self, **kwargs):
+            n = kwargs["input_ids"].shape[0]
+            # jeton CLS = [1.0, 2.0] ; tous les autres jetons diffèrent pour
+            # prouver qu'une moyenne donnerait un résultat différent.
+            one = torch.tensor([[1.0, 2.0], [99.0, 99.0], [99.0, 99.0], [99.0, 99.0]])
+            return type("Output", (), {"last_hidden_state": torch.stack([one] * n)})()
+
+    class _FakeAutoModel:
+        @staticmethod
+        def from_pretrained(model_name):
+            return _FakeModel()
+
+    monkeypatch.setattr(retrieve_module, "AutoTokenizer", _FakeAutoTokenizer)
+    monkeypatch.setattr(retrieve_module, "AutoModel", _FakeAutoModel)
+
+    embed = retrieve_module._cls_pooling_embedder("fake-medcpt", max_seq_length=64)
+    vectors = embed(["a", "b", "c"])
+
+    assert vectors.shape == (3, 2)
+    assert np.allclose(vectors, np.array([1.0, 2.0]))
+    assert seen["max_length"] == 64
+    assert seen["texts"] == ["a", "b", "c"]
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 critère 12 — essai : encode un échantillon, sans rien écrire
+# ---------------------------------------------------------------------------
+
+
+def _fake_corpus(n: int) -> list[dict]:
+    return [
+        {"_id": f"d{i}", "title": "", "text": f"doc{i} " + "mot " * 20}
+        for i in range(n)
+    ]
+
+
+def test_essai_embedding_uses_only_the_first_fifty_documents():
+    seen_texts: list[str] = []
+
+    def _embedder(texts):
+        seen_texts.extend(texts)
+        return np.ones((len(texts), 2), dtype=np.float32)
+
+    stats = essai_embedding(
+        corpus=_fake_corpus(120),
+        model_name="fake",
+        max_seq_length=100,
+        unit="document",
+        chunk_size=50,
+        chunk_overlap=10,
+        embedder=_embedder,
+        clock=iter([0.0, 2.0]).__next__,
+    )
+
+    assert stats["n_units"] == 50.0
+    assert any("doc49 " in t for t in seen_texts)
+    assert not any("doc50 " in t for t in seen_texts)
+
+
+def test_essai_embedding_chunks_into_passages_when_unit_is_passages():
+    def _char_offsets(text: str) -> list[tuple[int, int]]:
+        return [(i, i + 1) for i in range(len(text))]
+
+    stats = essai_embedding(
+        corpus=_fake_corpus(50),
+        model_name="fake",
+        max_seq_length=100,
+        unit="passages",
+        chunk_size=20,
+        chunk_overlap=5,
+        embedder=lambda texts: np.ones((len(texts), 2), dtype=np.float32),
+        offsets_fn=_char_offsets,
+        clock=iter([0.0, 1.0]).__next__,
+    )
+
+    assert stats["n_units"] > 50.0  # plusieurs passages par document
+
+
+def test_essai_embedding_extrapolates_duration_to_the_whole_corpus():
+    stats = essai_embedding(
+        corpus=_fake_corpus(120),
+        model_name="fake",
+        max_seq_length=100,
+        unit="document",
+        chunk_size=50,
+        chunk_overlap=10,
+        embedder=lambda texts: np.ones((len(texts), 2), dtype=np.float32),
+        clock=iter([0.0, 2.0]).__next__,
+    )
+
+    assert stats["duration_seconds"] == 2.0
+    assert stats["extrapolated_minutes"] == pytest.approx(2.0 * (120 / 50) / 60)
+
+
+def test_essai_embedding_does_not_write_any_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    essai_embedding(
+        corpus=_fake_corpus(50),
+        model_name="fake",
+        max_seq_length=100,
+        unit="document",
+        chunk_size=50,
+        chunk_overlap=10,
+        embedder=lambda texts: np.ones((len(texts), 2), dtype=np.float32),
+        clock=iter([0.0, 1.0]).__next__,
+    )
+
+    assert list(tmp_path.rglob("*.json*")) == []

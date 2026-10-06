@@ -55,6 +55,9 @@ def main(cfg: DictConfig) -> None:
         rrf_k=cfg.retriever.rrf_k,
         query_instruction=cfg.retriever.query_instruction,
         batch_size=cfg.retriever.batch_size,
+        query_model_name=cfg.retriever.query_model or None,
+        query_max_seq_length=cfg.retriever.query_max_seq_length or None,
+        pooling=cfg.retriever.pooling,
     )
 
     rerank_enabled = cfg.rerank is not None and cfg.rerank.name == "cross-encoder"

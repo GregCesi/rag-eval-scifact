@@ -9,9 +9,16 @@ sans toucher ce module).
 
 from __future__ import annotations
 
+import pytest
 from hydra import compose, initialize_config_dir
 
-from rag_eval_scifact.grid import has_existing_result, load_grid_combos
+from rag_eval_scifact.grid import (
+    GRID_DIR,
+    GridFileMissing,
+    grid_path_for_campagne,
+    has_existing_result,
+    load_grid_combos,
+)
 from rag_eval_scifact.run_campaign import CONF_DIR
 
 
@@ -309,3 +316,141 @@ def test_has_existing_result_false_when_campaign_dir_is_absent(tmp_path):
     assert not has_existing_result(
         tmp_path / "absent", "dense-minilm-256-sans-reranker"
     )
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 — une grille par campagne, jamais seulement v2-grid
+# ---------------------------------------------------------------------------
+
+
+def test_grid_path_for_campagne_points_at_conf_grid_campagne_yaml():
+    assert grid_path_for_campagne("v4-leviers") == GRID_DIR / "v4-leviers.yaml"
+
+
+def test_load_grid_combos_defaults_to_v2_grid_without_a_campagne():
+    combos = load_grid_combos()
+    assert len(combos) == 34
+
+
+def test_load_grid_combos_reads_the_named_campagne_grid_file():
+    combos = load_grid_combos(campagne="v4-leviers")
+    run_names = {c["run_name"] for c in combos}
+    assert run_names == {
+        "qwen3-passages-reference",
+        "qwen3-passages-sans-instruction",
+        "qwen3-4b-passages",
+        "medcpt-passages",
+    }
+
+
+def test_load_grid_combos_raises_grid_file_missing_without_a_traceback_cause(tmp_path):
+    with pytest.raises(GridFileMissing) as exc_info:
+        load_grid_combos(campagne="campagne-sans-grille")
+
+    assert "campagne-sans-grille" in str(exc_info.value)
+
+
+def test_load_grid_combos_with_explicit_path_still_works(tmp_path):
+    grid_file = tmp_path / "ad-hoc.yaml"
+    grid_file.write_text(
+        "runs:\n  - run_name: x\n    overrides: []\n", encoding="utf-8"
+    )
+
+    combos = load_grid_combos(path=grid_file)
+
+    assert combos == [{"run_name": "x", "overrides": []}]
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 critères 6, 7, 8 — v4-leviers : référence et ses deux premières
+# variantes à un seul levier changé
+# ---------------------------------------------------------------------------
+
+
+def test_v4_leviers_reference_matches_v2_grid_dense_qwen3_passages_key_for_key():
+    v2_combos = load_grid_combos()
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+
+    v2_reference = next(
+        c for c in v2_combos if c["run_name"] == "dense-qwen3-passages-sans-reranker"
+    )
+    v4_reference = next(
+        c for c in v4_combos if c["run_name"] == "qwen3-passages-reference"
+    )
+
+    cfg_v2 = _compose_combo(v2_reference)
+    cfg_v4 = _compose_combo(v4_reference)
+
+    assert cfg_v2.retriever == cfg_v4.retriever
+    assert cfg_v2.rerank == cfg_v4.rerank
+
+
+def test_v4_leviers_sans_instruction_only_empties_the_query_instruction():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+    reference = next(
+        c for c in v4_combos if c["run_name"] == "qwen3-passages-reference"
+    )
+    sans_instruction = next(
+        c for c in v4_combos if c["run_name"] == "qwen3-passages-sans-instruction"
+    )
+
+    cfg_reference = _compose_combo(reference)
+    cfg_sans_instruction = _compose_combo(sans_instruction)
+
+    assert cfg_sans_instruction.retriever.query_instruction == ""
+    assert cfg_reference.retriever.query_instruction != ""
+
+    diff = {
+        k: v
+        for k, v in cfg_sans_instruction.retriever.items()
+        if cfg_reference.retriever[k] != v
+    }
+    assert set(diff) == {"query_instruction"}
+
+
+def test_v4_leviers_4b_only_changes_model_and_batch_size():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+    reference = next(
+        c for c in v4_combos if c["run_name"] == "qwen3-passages-reference"
+    )
+    model_4b = next(c for c in v4_combos if c["run_name"] == "qwen3-4b-passages")
+
+    cfg_reference = _compose_combo(reference)
+    cfg_4b = _compose_combo(model_4b)
+
+    assert cfg_4b.retriever.model == "Qwen/Qwen3-Embedding-4B"
+    assert cfg_4b.retriever.batch_size == 2
+
+    diff = {
+        k: v for k, v in cfg_4b.retriever.items() if cfg_reference.retriever[k] != v
+    }
+    assert set(diff) == {"model", "batch_size"}
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 critères 9, 10 — medcpt-passages : double encodeur, sans instruction
+# ---------------------------------------------------------------------------
+
+
+def test_v4_leviers_medcpt_uses_two_named_encoders_without_query_instruction():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+    combo = next(c for c in v4_combos if c["run_name"] == "medcpt-passages")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.retriever.model == "ncbi/MedCPT-Article-Encoder"
+    assert cfg.retriever.query_model == "ncbi/MedCPT-Query-Encoder"
+    assert cfg.retriever.query_instruction == ""
+    assert cfg.retriever.unit == "passages"
+    assert cfg.retriever.chunk_size == 128
+    assert cfg.retriever.chunk_overlap == 32
+    assert cfg.rerank is None
+
+
+def test_v4_leviers_grid_has_no_reranker_bm25_or_hybrid():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+
+    for combo in v4_combos:
+        cfg = _compose_combo(combo)
+        assert cfg.rerank is None
+        assert cfg.retriever.name == "dense"

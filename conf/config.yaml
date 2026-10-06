@@ -40,6 +40,15 @@ retriever:
   # courts) ; un modèle à fenêtre longue (Qwen) sature la mémoire à cette
   # taille sur les documents longs — abaissé à 8 dans ses combinaisons.
   batch_size: 64
+  # Double encodeur (EXE-140, H2 : MedCPT) : modèle distinct pour les
+  # requêtes, avec sa propre fenêtre. Vide/0 (défaut) : requêtes et documents
+  # partagent `model`/`max_seq_length`, comportement inchangé.
+  query_model: ""
+  query_max_seq_length: 0
+  # Stratégie de pooling (EXE-140) : "mean" (défaut, délégué à
+  # sentence-transformers — MiniLM, Qwen) ou "cls" (premier jeton, modèle
+  # `transformers` brut sans config sentence-transformers — MedCPT, H2).
+  pooling: mean
 
 fusion: null
 # Reranker cross-encoder (EXE-96) : relit chaque (claim, document) ensemble

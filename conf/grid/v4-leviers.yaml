@@ -1,0 +1,58 @@
+# Grille v4-leviers : quatre premières combinaisons (EXE-140), chacune ne
+# changeant qu'un seul levier par rapport à `qwen3-passages-reference` — la
+# meilleure config de v2-grid (dense-qwen3-passages-sans-reranker, nDCG@10
+# 0.7319, relevé du 3 octobre 2026). Même format que conf/grid/v2-grid.yaml.
+runs:
+  - run_name: qwen3-passages-reference
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null
+  # Levier 1 : instruction de requête retirée (le reste égal à la référence).
+  - run_name: qwen3-passages-sans-instruction
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - retriever.query_instruction=""
+      - rerank=null
+  # Levier 2 : modèle Qwen3-Embedding-4B, lot réduit à 2 (H3, Mac 16 Go) ;
+  # le reste égal à la référence.
+  - run_name: qwen3-4b-passages
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-4B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=2
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null
+  # Levier 3 : double encodeur MedCPT (H2), sans instruction de requête (un
+  # texte de requête MedCPT, pas un texte Qwen instruit) ; découpage,
+  # regroupement et absence de reranker égaux à la référence.
+  - run_name: medcpt-passages
+    overrides:
+      - retriever.name=dense
+      - retriever.model=ncbi/MedCPT-Article-Encoder
+      - retriever.query_model=ncbi/MedCPT-Query-Encoder
+      - retriever.pooling=cls
+      - retriever.max_seq_length=512
+      - retriever.query_max_seq_length=64
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - retriever.query_instruction=""
+      - rerank=null

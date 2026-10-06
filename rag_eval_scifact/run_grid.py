@@ -1,14 +1,18 @@
-"""Point d'entrée CLI de la grille v2-grid : lister ou lancer ses combinaisons.
+"""Point d'entrée CLI de la grille d'une campagne : lister, lancer, essayer.
 
-Mode liste : affiche les combinaisons déclarées dans `conf/grid/v2-grid.yaml`,
+Mode liste : affiche les combinaisons déclarées dans `conf/grid/<campagne>.yaml`,
 une par ligne, puis leur nombre, sans rien lancer. Mode lancement : compose
 chaque combinaison avec `conf/config.yaml` (lanceur Hydra) et la lance comme un
 run de campagne, en réutilisant `run_campaign.main` tel quel — un levier reste
-une dimension de config Hydra, jamais un chemin de code dédié.
+une dimension de config Hydra, jamais un chemin de code dédié. Mode essai :
+chronomètre l'encodage d'un échantillon d'un run nommé, sans rien écrire.
 
 Usage : python -m rag_eval_scifact.run_grid --list
+        python -m rag_eval_scifact.run_grid --list --campagne v4-leviers
         python -m rag_eval_scifact.run_grid
         python -m rag_eval_scifact.run_grid --campagne dev
+        python -m rag_eval_scifact.run_grid --campagne v4-leviers --run qwen3-passages-reference
+        python -m rag_eval_scifact.run_grid --campagne v4-leviers --essai medcpt-passages
 """
 
 from __future__ import annotations
@@ -21,21 +25,59 @@ from hydra.core.global_hydra import GlobalHydra
 
 import rag_eval_scifact.campaign as campaign_module
 import rag_eval_scifact.run_campaign as run_campaign_module
-from rag_eval_scifact.grid import has_existing_result, load_grid_combos
+from rag_eval_scifact.grid import GridFileMissing, has_existing_result, load_grid_combos
+from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
+from rag_eval_scifact.retrieve import essai_embedding
 from rag_eval_scifact.run_campaign import CONF_DIR
 
-GATED_CAMPAGNE = "v2-grid"
-PREDICTION_PATH = "results/v2-grid/PREDICTION.md"
+DEFAULT_CAMPAGNE = "v2-grid"
+UNGATED_CAMPAGNE = "dev"
 
 
-def _prediction_committed() -> bool:
-    """`PREDICTION_PATH` est présent dans le dernier commit (`git show HEAD:...`)."""
+def _prediction_committed(campagne: str) -> bool:
+    """`results/<campagne>/PREDICTION.md` est présent dans le dernier commit."""
+    path = f"results/{campagne}/PREDICTION.md"
     result = subprocess.run(
-        ["git", "show", f"HEAD:{PREDICTION_PATH}"],
+        ["git", "show", f"HEAD:{path}"],
         capture_output=True,
         check=False,
     )
     return result.returncode == 0
+
+
+def _load_combos_or_exit(campagne: str) -> list[dict]:
+    """Charge la grille d'une campagne ; une phrase, jamais une trace Python,
+    quand le fichier attendu est absent (critère 4)."""
+    try:
+        return load_grid_combos(campagne=campagne)
+    except GridFileMissing as exc:
+        print(
+            f"Aucun fichier de grille pour la campagne « {campagne} » (attendu : {exc})."
+        )
+        raise SystemExit(1)
+
+
+def _find_combo_or_exit(combos: list[dict], run_name: str, campagne: str) -> dict:
+    """Résout un run nommé dans la grille ; liste les noms connus s'il est
+    absent (critère 5)."""
+    combo = next((c for c in combos if c["run_name"] == run_name), None)
+    if combo is None:
+        known = ", ".join(c["run_name"] for c in combos)
+        print(f"Run inconnu dans {campagne} : « {run_name} ». Runs connus : {known}.")
+        raise SystemExit(1)
+    return combo
+
+
+def _compose_cfg(campagne: str, combo: dict):
+    overrides = [
+        f"campagne={campagne}",
+        f"run_name={combo['run_name']}",
+        *combo["overrides"],
+    ]
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        return compose(config_name="config", overrides=overrides)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,23 +90,66 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--campagne",
-        default=GATED_CAMPAGNE,
-        help=f"Campagne cible des runs lancés (défaut : {GATED_CAMPAGNE}).",
+        default=DEFAULT_CAMPAGNE,
+        help=f"Campagne cible (défaut : {DEFAULT_CAMPAGNE}).",
+    )
+    parser.add_argument(
+        "--run",
+        dest="run_name",
+        default=None,
+        help="Lance uniquement ce run nommé (sinon, tous les runs de la campagne).",
+    )
+    parser.add_argument(
+        "--essai",
+        dest="essai_run_name",
+        default=None,
+        help=(
+            "Essai rapide (50 premiers documents) de ce run nommé : affiche la "
+            "durée et son extrapolation au corpus entier, n'écrit rien."
+        ),
     )
     args = parser.parse_args(argv)
 
-    combos = load_grid_combos()
-
     if args.list_only:
+        combos = _load_combos_or_exit(args.campagne)
         for combo in combos:
             print(combo["run_name"])
         print(f"{len(combos)} combinaison(s)")
         return
 
-    if args.campagne == GATED_CAMPAGNE and not _prediction_committed():
+    if args.essai_run_name is not None:
+        combos = _load_combos_or_exit(args.campagne)
+        combo = _find_combo_or_exit(combos, args.essai_run_name, args.campagne)
+        cfg = _compose_cfg(args.campagne, combo)
+        docs = load_corpus(CORPUS_PATH)
+        stats = essai_embedding(
+            corpus=docs,
+            model_name=cfg.retriever.model,
+            max_seq_length=cfg.retriever.max_seq_length,
+            unit=cfg.retriever.unit,
+            chunk_size=cfg.retriever.chunk_size,
+            chunk_overlap=cfg.retriever.chunk_overlap,
+            batch_size=cfg.retriever.batch_size,
+            pooling=cfg.retriever.pooling,
+        )
         print(
-            f"Lancement refusé : {PREDICTION_PATH} n'est pas dans le dernier "
-            "commit (.claude/rules/methodologie.md)."
+            f"Essai {combo['run_name']} : {int(stats['n_units'])} passages (50 premiers documents)"
+        )
+        print(f"  Durée           : {stats['duration_seconds']:.2f} s")
+        print(
+            f"  Extrapolation   : {stats['extrapolated_minutes']:.1f} min (corpus entier)"
+        )
+        return
+
+    combos = _load_combos_or_exit(args.campagne)
+
+    if args.run_name is not None:
+        combos = [_find_combo_or_exit(combos, args.run_name, args.campagne)]
+
+    if args.campagne != UNGATED_CAMPAGNE and not _prediction_committed(args.campagne):
+        print(
+            f"Lancement refusé : results/{args.campagne}/PREDICTION.md n'est pas "
+            "dans le dernier commit (.claude/rules/methodologie.md)."
         )
         raise SystemExit(1)
 
@@ -75,15 +160,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{run_name} : déjà fait, ignoré")
             continue
 
-        overrides = [
-            f"campagne={args.campagne}",
-            f"run_name={run_name}",
-            *combo["overrides"],
-        ]
-        if GlobalHydra().is_initialized():
-            GlobalHydra.instance().clear()
-        with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
-            cfg = compose(config_name="config", overrides=overrides)
+        cfg = _compose_cfg(args.campagne, combo)
         run_campaign_module.main(cfg)
 
 

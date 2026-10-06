@@ -176,3 +176,37 @@ def test_rerank_null_override_still_disables_it():
         cfg = compose(config_name="config", overrides=["rerank=null"])
 
     assert cfg.rerank is None
+
+
+# ---------------------------------------------------------------------------
+# EXE-140 — double encodeur : query_model, query_max_seq_length, pooling
+# ---------------------------------------------------------------------------
+
+
+def test_defaults_have_no_distinct_query_model_and_mean_pooling():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.retriever.query_model == ""
+    assert cfg.retriever.query_max_seq_length == 0
+    assert cfg.retriever.pooling == "mean"
+
+
+def test_query_model_pooling_and_query_max_seq_length_are_overridable():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(
+            config_name="config",
+            overrides=[
+                "retriever.model=ncbi/MedCPT-Article-Encoder",
+                "retriever.query_model=ncbi/MedCPT-Query-Encoder",
+                "retriever.pooling=cls",
+                "retriever.max_seq_length=512",
+                "retriever.query_max_seq_length=64",
+            ],
+        )
+
+    assert cfg.retriever.model == "ncbi/MedCPT-Article-Encoder"
+    assert cfg.retriever.query_model == "ncbi/MedCPT-Query-Encoder"
+    assert cfg.retriever.pooling == "cls"
+    assert cfg.retriever.max_seq_length == 512
+    assert cfg.retriever.query_max_seq_length == 64
