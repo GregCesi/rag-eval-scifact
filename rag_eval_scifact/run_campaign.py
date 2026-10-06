@@ -20,6 +20,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from rag_eval_scifact.campaign import run_campaign
+from rag_eval_scifact.hyde import HYDE_PATH, N_CLAIMS, load_hyde_texts
 from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
 from rag_eval_scifact.mlflow_tracking import log_campaign_run, log_query_traces
 from rag_eval_scifact.rerank import rerank_campaign_results
@@ -37,6 +38,18 @@ def main(cfg: DictConfig) -> None:
     run_date = datetime.now(UTC)
 
     print(f"Campagne : {cfg.campagne} — run : {cfg.run_name}")
+
+    query_texts_override = None
+    if cfg.retriever.query_source == "hyde":
+        hyde_texts = load_hyde_texts(HYDE_PATH)
+        if len(hyde_texts) < N_CLAIMS:
+            print(
+                f"Lancement refusé : {HYDE_PATH} contient {len(hyde_texts)} "
+                f"texte(s) sur {N_CLAIMS}."
+            )
+            raise SystemExit(1)
+        query_texts_override = hyde_texts
+
     results, qrels, dataset_hash, stats = retrieve_campaign(
         top_k=cfg.top_k,
         model_name=cfg.retriever.model,
@@ -58,6 +71,8 @@ def main(cfg: DictConfig) -> None:
         query_model_name=cfg.retriever.query_model or None,
         query_max_seq_length=cfg.retriever.query_max_seq_length or None,
         pooling=cfg.retriever.pooling,
+        query_source=cfg.retriever.query_source,
+        query_texts_override=query_texts_override,
     )
 
     rerank_enabled = cfg.rerank is not None and cfg.rerank.name == "cross-encoder"

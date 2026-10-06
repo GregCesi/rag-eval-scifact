@@ -173,7 +173,7 @@ def test_launch_skips_combo_with_existing_result_and_says_so(
 # ---------------------------------------------------------------------------
 
 
-def test_list_mode_for_v4_leviers_shows_its_four_runs_and_count(capsys):
+def test_list_mode_for_v4_leviers_shows_its_five_runs_and_count(capsys):
     run_grid_module.main(["--list", "--campagne", "v4-leviers"])
 
     out = capsys.readouterr().out
@@ -182,9 +182,10 @@ def test_list_mode_for_v4_leviers_shows_its_four_runs_and_count(capsys):
         "qwen3-passages-sans-instruction",
         "qwen3-4b-passages",
         "medcpt-passages",
+        "qwen3-passages-hyde",
     ]:
         assert name in out
-    assert "4 combinaison(s)" in out
+    assert "5 combinaison(s)" in out
 
 
 def test_list_mode_without_naming_a_campagne_still_shows_v2_grid(capsys):

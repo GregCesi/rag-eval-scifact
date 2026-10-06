@@ -394,16 +394,26 @@ def _default_embedder(
 
 
 def _ranking_unit_with_query_model(
-    unit: str, model_name: str, query_model_name: str | None
+    unit: str,
+    model_name: str,
+    query_model_name: str | None,
+    query_source: str = "claim",
 ) -> str:
     """Distingue le cache de classement quand le modèle de requête diffère de
     celui des documents (EXE-140, double encodeur type MedCPT) : deux runs
     qui partagent `model_name` mais pas `query_model_name` ne doivent jamais
     se relire l'un l'autre, alors que les embeddings de documents (indépendants
     du modèle de requête) restent, eux, rangés par `model_name` seul.
+
+    `query_source` (EXE-141, HyDE) distingue en plus le texte qui sert à
+    chercher : un run qui cherche avec l'affirmation et un run qui cherche
+    avec un texte rédigé (HyDE) ne doivent jamais se relire l'un l'autre, même
+    à modèle et fenêtre égaux.
     """
     if query_model_name and query_model_name != model_name:
-        return f"{unit}-qm-{query_model_name.replace('/', '_')}"
+        unit = f"{unit}-qm-{query_model_name.replace('/', '_')}"
+    if query_source != "claim":
+        unit = f"{unit}-qs-{query_source}"
     return unit
 
 
@@ -485,6 +495,8 @@ def retrieve_campaign(
     query_model_name: str | None = None,
     query_max_seq_length: int | None = None,
     pooling: str = "mean",
+    query_source: str = "claim",
+    query_texts_override: dict[str, str] | None = None,
     embedder: Callable[[list[str]], np.ndarray] | None = None,
     query_embedder: Callable[[list[str]], np.ndarray] | None = None,
     token_counter: Callable[[list[str]], list[int]] | None = None,
@@ -552,11 +564,23 @@ def retrieve_campaign(
     distingue en plus le modèle de requête quand il diffère, pour ne jamais
     confondre deux runs qui partagent le modèle documents mais pas le modèle
     requêtes.
+
+    `query_source` et `query_texts_override` (EXE-141, HyDE) : quand
+    `query_texts_override` est fourni (`claim_id` -> texte), ce texte
+    remplace celui de l'affirmation pour la recherche — `RetrievalResult.query_text`
+    et le classement se font sur ce texte, jamais sur l'affirmation.
+    `query_instruction` ne s'applique alors jamais, quelle que soit sa valeur
+    de configuration : c'est un texte de document, pas une question
+    instruite. `query_source` (`"claim"` par défaut, inchangé) range en plus
+    le cache de classement à part de celui des runs qui cherchent avec
+    l'affirmation.
     """
     dataset_hash = compute_dataset_hash(corpus_path)
     print(f"  dataset_hash = {dataset_hash[:30]}...")
 
     queries, qrels = load_test_queries(queries_path, qrels_path)
+    if query_texts_override is not None:
+        queries = [{**q, "text": query_texts_override[q["_id"]]} for q in queries]
 
     docs = load_corpus(corpus_path)
     doc_ids = [doc["_id"] for doc in docs]
@@ -603,6 +627,8 @@ def retrieve_campaign(
             query_model_name=query_model_name,
             query_max_seq_length=query_max_seq_length,
             pooling=pooling,
+            query_source=query_source,
+            query_texts_override=query_texts_override,
             embedder=embedder,
             query_embedder=query_embedder,
             token_counter=token_counter,
@@ -625,6 +651,7 @@ def retrieve_campaign(
             retriever_name="bm25",
             bm25_k1=bm25_k1,
             bm25_b=bm25_b,
+            query_texts_override=query_texts_override,
             offsets_fn=offsets_fn,
             corpus_path=corpus_path,
             queries_path=queries_path,
@@ -743,7 +770,10 @@ def retrieve_campaign(
 
         chunking_unit = f"passages-{chunk_size}-{chunk_overlap}"
         ranking_unit = _ranking_unit_with_query_model(
-            f"{chunking_unit}-{grouping}-{grouping_top_n}", model_name, query_model_name
+            f"{chunking_unit}-{grouping}-{grouping_top_n}",
+            model_name,
+            query_model_name,
+            query_source,
         )
 
         def _compute_ranking() -> list[dict]:
@@ -765,7 +795,7 @@ def retrieve_campaign(
 
             retrieval_start = time.perf_counter()
             query_texts = [q["text"] for q in queries]
-            if query_instruction:
+            if query_instruction and query_source == "claim":
                 query_texts = [query_instruction + t for t in query_texts]
             query_embeddings = query_embed(query_texts)
             ranked = _rank_top_k_grouped(
@@ -827,7 +857,7 @@ def retrieve_campaign(
 
             retrieval_start = time.perf_counter()
             query_texts = [q["text"] for q in queries]
-            if query_instruction:
+            if query_instruction and query_source == "claim":
                 query_texts = [query_instruction + t for t in query_texts]
             query_embeddings = query_embed(query_texts)
             ranked = _rank_top_k(
@@ -855,7 +885,7 @@ def retrieve_campaign(
             split,
             _compute_ranking,
             unit=_ranking_unit_with_query_model(
-                "document", model_name, query_model_name
+                "document", model_name, query_model_name, query_source
             ),
         )
 

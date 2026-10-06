@@ -56,3 +56,18 @@ runs:
       - retriever.batch_size=8
       - retriever.query_instruction=""
       - rerank=null
+  # Levier HyDE (EXE-141) : le texte qui sert à chercher remplace
+  # l'affirmation par le faux résumé rédigé (results/v4-leviers/hyde.json),
+  # sans instruction de requête (H2 — un texte de document, pas une
+  # question) ; le reste égal à la référence.
+  - run_name: qwen3-passages-hyde
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-0.6B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=8
+      - retriever.query_source=hyde
+      - rerank=null

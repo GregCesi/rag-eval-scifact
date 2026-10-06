@@ -49,6 +49,11 @@ retriever:
   # sentence-transformers — MiniLM, Qwen) ou "cls" (premier jeton, modèle
   # `transformers` brut sans config sentence-transformers — MedCPT, H2).
   pooling: mean
+  # Texte qui sert à chercher (EXE-141, HyDE) : "claim" (défaut, inchangé,
+  # l'affirmation) ou "hyde" — remplacé par le faux résumé rédigé
+  # (`results/v4-leviers/hyde.json`), sans `query_instruction` (c'est un
+  # texte de document, pas une question instruite).
+  query_source: claim
 
 fusion: null
 # Reranker cross-encoder (EXE-96) : relit chaque (claim, document) ensemble

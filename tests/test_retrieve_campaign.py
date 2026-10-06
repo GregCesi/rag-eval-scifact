@@ -21,6 +21,13 @@ WINDOW = 256
 SPLIT = "test"
 
 
+def _load_queries() -> list[dict]:
+    queries, _ = retrieve_module.load_test_queries(
+        retrieve_module.QUERIES_PATH, retrieve_module.QRELS_PATH
+    )
+    return queries
+
+
 def _fake_embedder(calls: list):
     def _embed(texts: list[str]) -> np.ndarray:
         calls.append(len(texts))
@@ -484,6 +491,89 @@ def test_no_instruction_by_default_leaves_query_texts_unchanged(tmp_path):
 
     _, query_texts_seen = seen
     assert not any(t.startswith("INSTR: ") for t in query_texts_seen)
+
+
+# ---------------------------------------------------------------------------
+# EXE-141 — le texte qui sert à chercher (HyDE) remplace celui de l'affirmation
+# ---------------------------------------------------------------------------
+
+
+def test_query_texts_override_replaces_the_claim_text_for_search(tmp_path):
+    seen: list = []
+    results, _, _, _ = retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_capturing_embedder(seen),
+        token_counter=_fake_token_counter(),
+        query_source="hyde",
+        query_texts_override={q["_id"]: f"hyde-{q['_id']}" for q in _load_queries()},
+    )
+
+    _, query_texts_seen = seen
+    assert all(t.startswith("hyde-") for t in query_texts_seen)
+    # Le résultat garde, pour chaque affirmation, le texte qui a servi à
+    # chercher (critère 11) — jamais l'affirmation elle-même.
+    for r in results:
+        assert r.query_text == f"hyde-{r.query_id}"
+
+
+def test_query_instruction_never_applies_when_query_source_is_hyde(tmp_path):
+    seen: list = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_capturing_embedder(seen),
+        token_counter=_fake_token_counter(),
+        query_instruction="INSTR: ",
+        query_source="hyde",
+        query_texts_override={q["_id"]: f"hyde-{q['_id']}" for q in _load_queries()},
+    )
+
+    _, query_texts_seen = seen
+    assert not any(t.startswith("INSTR: ") for t in query_texts_seen)
+
+
+def test_hyde_ranking_cache_is_separate_from_claim_sourced_run(tmp_path):
+    """Un run qui cherche avec un texte rédigé (HyDE) et un run qui cherche
+    avec l'affirmation, à modèle et fenêtre égaux, ne se relisent jamais l'un
+    l'autre sur le classement (sinon le classement de l'un serait
+    silencieusement celui de l'autre) — même si les deux partagent le cache
+    des embeddings de documents (indépendants du texte de requête)."""
+    claim_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(claim_calls),
+        token_counter=_fake_token_counter(),
+    )
+    assert len(claim_calls) == 2  # docs + requêtes, premier run
+
+    hyde_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(hyde_calls),
+        token_counter=_fake_token_counter(),
+        query_source="hyde",
+        query_texts_override={q["_id"]: f"hyde-{q['_id']}" for q in _load_queries()},
+    )
+
+    # Le classement est recalculé (cache de classement distinct, critère
+    # recherché) mais les documents, eux, sont servis par leur cache partagé :
+    # un seul appel, pour les requêtes.
+    assert len(hyde_calls) == 1
 
 
 def test_qwen_model_cache_is_separate_from_minilm_default_run(tmp_path):

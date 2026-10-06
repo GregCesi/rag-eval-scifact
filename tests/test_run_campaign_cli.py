@@ -344,3 +344,98 @@ def test_rerank_cross_encoder_duration_is_logged_in_mlflow(_isolated_cli, monkey
     experiment = client.get_experiment_by_name("dev")
     run = client.search_runs([experiment.experiment_id])[0]
     assert run.data.metrics["rerank_duration_seconds"] == pytest.approx(2.5)
+
+
+# ---------------------------------------------------------------------------
+# EXE-141, critère 10 — refus de lancer un run « query_source=hyde » tant que
+# hyde.json est absent ou incomplet
+# ---------------------------------------------------------------------------
+
+
+def test_hyde_query_source_refuses_to_launch_when_hyde_file_is_missing(
+    _isolated_cli, monkeypatch
+):
+    monkeypatch.setattr(run_campaign_module, "load_hyde_texts", lambda path: {})
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        run_campaign_module,
+        "retrieve_campaign",
+        lambda **kw: calls.append(kw) or _fake_retrieve_campaign(**kw),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "retriever.query_source=hyde",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    with pytest.raises(SystemExit):
+        run_campaign_module._cli()
+
+    assert calls == []
+    assert list((_isolated_cli / "results" / "dev").glob("*.json.gz")) == []
+
+
+def test_hyde_query_source_refuses_to_launch_when_hyde_file_is_incomplete(
+    capsys, _isolated_cli, monkeypatch
+):
+    monkeypatch.setattr(
+        run_campaign_module, "load_hyde_texts", lambda path: {"1": "texte"}
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "retriever.query_source=hyde",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    with pytest.raises(SystemExit):
+        run_campaign_module._cli()
+
+    out = capsys.readouterr().out
+    assert "1" in out
+    assert "300" in out
+    assert list((_isolated_cli / "results" / "dev").glob("*.json.gz")) == []
+
+
+def test_hyde_query_source_launches_when_hyde_file_is_complete(
+    _isolated_cli, monkeypatch
+):
+    hyde_texts = {str(i): f"texte-{i}" for i in range(1, 301)}
+    monkeypatch.setattr(run_campaign_module, "load_hyde_texts", lambda path: hyde_texts)
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        run_campaign_module,
+        "retrieve_campaign",
+        lambda **kw: calls.append(kw) or _fake_retrieve_campaign(**kw),
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "retriever.query_source=hyde",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    assert calls[0]["query_source"] == "hyde"
+    assert calls[0]["query_texts_override"] == hyde_texts

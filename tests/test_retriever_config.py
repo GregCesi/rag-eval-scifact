@@ -210,3 +210,22 @@ def test_query_model_pooling_and_query_max_seq_length_are_overridable():
     assert cfg.retriever.pooling == "cls"
     assert cfg.retriever.max_seq_length == 512
     assert cfg.retriever.query_max_seq_length == 64
+
+
+# ---------------------------------------------------------------------------
+# EXE-141 — texte qui sert à chercher (HyDE)
+# ---------------------------------------------------------------------------
+
+
+def test_default_query_source_is_claim():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config")
+
+    assert cfg.retriever.query_source == "claim"
+
+
+def test_query_source_is_overridable_to_hyde():
+    with initialize_config_dir(config_dir=CONF_DIR, version_base=None):
+        cfg = compose(config_name="config", overrides=["retriever.query_source=hyde"])
+
+    assert cfg.retriever.query_source == "hyde"

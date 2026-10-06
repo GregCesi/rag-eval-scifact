@@ -340,6 +340,7 @@ def test_load_grid_combos_reads_the_named_campagne_grid_file():
         "qwen3-passages-sans-instruction",
         "qwen3-4b-passages",
         "medcpt-passages",
+        "qwen3-passages-hyde",
     }
 
 
