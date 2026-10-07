@@ -11,6 +11,7 @@ ChromaDB sert uniquement de store (embeddings, metadata, dataset_hash).
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import time
 from collections.abc import Callable
@@ -398,22 +399,38 @@ def _ranking_unit_with_query_model(
     model_name: str,
     query_model_name: str | None,
     query_source: str = "claim",
+    query_instruction: str = "",
+    query_max_seq_length: int | None = None,
+    pooling: str = "mean",
 ) -> str:
-    """Distingue le cache de classement quand le modèle de requête diffère de
-    celui des documents (EXE-140, double encodeur type MedCPT) : deux runs
-    qui partagent `model_name` mais pas `query_model_name` ne doivent jamais
-    se relire l'un l'autre, alors que les embeddings de documents (indépendants
-    du modèle de requête) restent, eux, rangés par `model_name` seul.
+    """Distingue le cache de classement de tout ce qui change le texte de
+    requête ou son encodage (EXE-145) : deux runs qui partagent `model_name`,
+    `max_seq_length`, `unit`, `top_k` et `split` mais pas l'un de ces réglages
+    ne doivent jamais se relire l'un l'autre sur le classement, alors que les
+    embeddings de documents (indépendants de la requête) restent, eux, rangés
+    sans ces réglages.
 
-    `query_source` (EXE-141, HyDE) distingue en plus le texte qui sert à
-    chercher : un run qui cherche avec l'affirmation et un run qui cherche
-    avec un texte rédigé (HyDE) ne doivent jamais se relire l'un l'autre, même
-    à modèle et fenêtre égaux.
+    - `query_model_name` (EXE-140, double encodeur type MedCPT) : modèle de
+      requête distinct du modèle de documents.
+    - `query_source` (EXE-141, HyDE) : affirmation ou texte rédigé.
+    - `query_instruction` (EXE-94) : préfixe ajouté aux requêtes, ignoré
+      quand `query_source != "claim"` (il ne s'applique alors jamais, voir
+      `retrieve_campaign`) — pas de séparation inutile dans ce cas.
+    - `query_max_seq_length` (EXE-140) : fenêtre du modèle de requête, utile
+      seulement avec un `query_model_name` distinct.
+    - `pooling` (EXE-140) : façon de tirer le vecteur (`mean`/`cls`).
     """
     if query_model_name and query_model_name != model_name:
         unit = f"{unit}-qm-{query_model_name.replace('/', '_')}"
     if query_source != "claim":
         unit = f"{unit}-qs-{query_source}"
+    elif query_instruction:
+        instruction_hash = hashlib.sha256(query_instruction.encode()).hexdigest()[:12]
+        unit = f"{unit}-qi-{instruction_hash}"
+    if query_max_seq_length:
+        unit = f"{unit}-qw-{query_max_seq_length}"
+    if pooling != "mean":
+        unit = f"{unit}-pool-{pooling}"
     return unit
 
 
@@ -774,6 +791,9 @@ def retrieve_campaign(
             model_name,
             query_model_name,
             query_source,
+            query_instruction,
+            query_max_seq_length,
+            pooling,
         )
 
         def _compute_ranking() -> list[dict]:
@@ -885,7 +905,13 @@ def retrieve_campaign(
             split,
             _compute_ranking,
             unit=_ranking_unit_with_query_model(
-                "document", model_name, query_model_name, query_source
+                "document",
+                model_name,
+                query_model_name,
+                query_source,
+                query_instruction,
+                query_max_seq_length,
+                pooling,
             ),
         )
 

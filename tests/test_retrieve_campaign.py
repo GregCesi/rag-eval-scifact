@@ -619,6 +619,158 @@ def test_qwen_model_cache_is_separate_from_minilm_default_run(tmp_path):
     assert minilm_replay == []  # MiniLM toujours servi par son propre cache
 
 
+# ---------------------------------------------------------------------------
+# EXE-145 — le cache de classement porte tout ce qui change le texte de
+# recherche ou son encodage, jamais seulement le modèle/la fenêtre document
+# ---------------------------------------------------------------------------
+
+
+def test_query_instruction_only_difference_misses_ranking_cache(tmp_path):
+    """Critères 1, 2, 4 — deux runs qui ne diffèrent que par l'instruction de
+    requête ne doivent jamais se relire l'un l'autre sur le classement, mais
+    partagent le cache des embeddings de documents (indépendants de
+    l'instruction)."""
+    no_instruction_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(no_instruction_calls),
+        token_counter=_fake_token_counter(),
+    )
+    assert len(no_instruction_calls) == 2
+
+    instruction_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(instruction_calls),
+        token_counter=_fake_token_counter(),
+        query_instruction="INSTR: ",
+    )
+
+    # classement recalculé (nouvelle instruction) mais les documents sont
+    # servis par leur cache partagé : un seul appel, pour les requêtes.
+    assert len(instruction_calls) == 1
+
+    replay_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(replay_calls),
+        token_counter=_fake_token_counter(),
+        query_instruction="INSTR: ",
+    )
+
+    # critère 2 — rejouer le même run (même instruction) relit son propre
+    # classement, sans aucun appel à l'embedder.
+    assert replay_calls == []
+
+
+def test_query_model_only_difference_misses_ranking_cache(tmp_path):
+    """Critère 3 (modèle des questions) — à `model_name` égal, changer
+    `query_model_name` seul ne doit jamais relire le classement d'un run sans
+    modèle de requête distinct."""
+    no_query_model_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(no_query_model_calls),
+        token_counter=_fake_token_counter(),
+    )
+    assert len(no_query_model_calls) == 2
+
+    query_model_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(query_model_calls),
+        token_counter=_fake_token_counter(),
+        query_model_name="other-query-model",
+    )
+
+    assert len(query_model_calls) == 1  # documents toujours servis par le cache partagé
+
+
+def test_query_window_only_difference_misses_ranking_cache(tmp_path):
+    """Critère 3 (fenêtre des questions) — à modèle de requête égal, changer
+    `query_max_seq_length` seul ne doit jamais relire le classement d'un run
+    avec une autre fenêtre de requête."""
+    base_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(base_calls),
+        token_counter=_fake_token_counter(),
+        query_model_name="other-query-model",
+        query_max_seq_length=64,
+    )
+    assert len(base_calls) == 2
+
+    changed_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(changed_calls),
+        token_counter=_fake_token_counter(),
+        query_model_name="other-query-model",
+        query_max_seq_length=128,
+    )
+
+    assert len(changed_calls) == 1  # documents toujours servis par le cache partagé
+
+
+def test_pooling_only_difference_misses_ranking_cache(tmp_path):
+    """Critère 3 (façon de tirer le vecteur) — à modèle et fenêtre égaux,
+    changer `pooling` seul ne doit jamais relire le classement d'un run avec
+    une autre façon d'encoder."""
+    mean_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(mean_calls),
+        token_counter=_fake_token_counter(),
+    )
+    assert len(mean_calls) == 2
+
+    cls_calls: list[int] = []
+    retrieve_campaign(
+        top_k=TOP_K,
+        model_name=MODEL,
+        max_seq_length=WINDOW,
+        split=SPLIT,
+        cache_dir=tmp_path,
+        embedder=_fake_embedder(cls_calls),
+        token_counter=_fake_token_counter(),
+        pooling="cls",
+    )
+
+    assert len(cls_calls) == 1  # documents toujours servis par le cache partagé
+
+
 def test_default_embedder_forwards_configured_batch_size(monkeypatch):
     """H7 — un modèle à fenêtre longue (Qwen) sature la mémoire au batch_size
     par défaut (64) ; `batch_size` doit atteindre `SentenceTransformer.encode`
