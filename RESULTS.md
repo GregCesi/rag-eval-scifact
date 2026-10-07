@@ -36,3 +36,6 @@
 | v2-grid/hybrid-qwen3-abstract-entier-rrf-avec-reranker | 2026-10-03 | 0.5553 | 0.7449 | 0.8256 | 0.9633 | 0.6944 | 0.6673 | max_seq=2048 | |
 | v2-grid/hybrid-qwen3-passages-union-avec-reranker | 2026-10-03 | 0.5553 | 0.7449 | 0.8289 | 0.9567 | 0.6955 | 0.6670 | max_seq=2048 | |
 | v2-grid/hybrid-qwen3-passages-rrf-avec-reranker | 2026-10-03 | 0.5553 | 0.7449 | 0.8289 | 0.9567 | 0.6951 | 0.6665 | max_seq=2048 | |
+| v4-leviers/qwen3-passages-reference | 2026-10-06 | 0.5724 | 0.8055 | 0.8539 | 0.9533 | 0.7319 | 0.7013 | max_seq=2048 | |
+| v4-leviers/qwen3-passages-hyde | 2026-10-06 | 0.6054 | 0.8083 | 0.8499 | 0.9667 | 0.7401 | 0.7113 | max_seq=2048 | |
+| v4-leviers/medcpt-passages | 2026-10-06 | 0.5699 | 0.8014 | 0.8699 | 0.9717 | 0.7281 | 0.6905 | max_seq=512 | |
