@@ -15,6 +15,7 @@ from rag_eval_scifact.category_report import (
     write_report,
     write_report_for_campaign,
 )
+from rag_eval_scifact.report import InvalidRunFile
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -35,7 +36,11 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.campagne is None and args.reference is None:
-        path = write_report()
+        try:
+            path = write_report()
+        except InvalidRunFile as exc:
+            print(str(exc))
+            raise SystemExit(1)
         print(f"Rapport écrit : {path}")
         return
 
@@ -47,6 +52,9 @@ def main(argv: list[str] | None = None) -> None:
             f"Campagne « {campagne} » : aucun run sous results/{campagne}/. "
             "Aucun rapport écrit."
         )
+        raise SystemExit(1)
+    except InvalidRunFile as exc:
+        print(str(exc))
         raise SystemExit(1)
     print(f"Rapport écrit : {path}")
 

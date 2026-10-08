@@ -402,6 +402,42 @@ def test_reranker_chart_replaced_by_a_sentence_when_the_campaign_has_none(
 # ---------------------------------------------------------------------------
 
 
+def test_non_run_shaped_json_file_is_not_listed_as_a_run(
+    monkeypatch, _real_fab_campaign
+):
+    """EXE-156, critère 2 : un fichier .json qui n'a pas la forme d'un run
+    (ex. hyde.json) rangé dans le dossier d'une campagne n'apparaît pas comme
+    run de la page « Niveaux de lecture » et ne la casse pas."""
+    campaign_name = "_test-dashboard-non-run-json"
+    campaign_dir = _real_fab_campaign(campaign_name, ["strat-a-sans-reranker"])
+    (campaign_dir / "hyde.json").write_text(
+        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+    )
+
+    _stub_common_widgets(monkeypatch)
+    multiselect_calls = []
+
+    def fake_multiselect(label, options, default=None, **kw):
+        multiselect_calls.append((label, list(options), default))
+        return default or []
+
+    monkeypatch.setattr(dashboard.st, "multiselect", fake_multiselect)
+
+    def fake_selectbox(label, options, index=0, **kw):
+        options = list(options)
+        if label == "Campagne":
+            return campaign_name
+        return options[index]
+
+    monkeypatch.setattr(dashboard.st, "selectbox", fake_selectbox)
+
+    dashboard.page_reading_levels(corpus={})
+
+    _, options, _ = multiselect_calls[0]
+    assert "hyde" not in options
+    assert options == ["strat-a-sans-reranker"]
+
+
 def test_comparison_default_is_the_chosen_campaigns_runs_up_to_six(
     monkeypatch, _real_fab_campaign
 ):

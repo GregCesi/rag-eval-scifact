@@ -184,3 +184,43 @@ def test_report_regenerates_identically_when_results_are_unchanged(_campaign):
     second = report_module.write_report("campagne-test").read_text(encoding="utf-8")
 
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# EXE-156 — un fichier qui n'est pas un run, rangé dans le dossier d'une
+# campagne, ne casse ni le chargement ni le rapport.
+# ---------------------------------------------------------------------------
+
+
+def test_load_campaign_runs_ignores_a_non_run_shaped_json_file(_campaign):
+    (_campaign / "campagne-test" / "hyde.json").write_text(
+        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+    )
+
+    runs = report_module.load_campaign_runs("campagne-test")
+
+    assert {r["run_name"] for r in runs} == {"run-a", "run-b"}
+
+
+def test_write_report_ignores_a_non_run_shaped_json_file_in_the_campaign_dir(
+    _campaign,
+):
+    (_campaign / "campagne-test" / "hyde.json").write_text(
+        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+    )
+
+    content = report_module.write_report("campagne-test").read_text(encoding="utf-8")
+
+    assert "hyde" not in content
+    assert "run-a" in content
+    assert "run-b" in content
+
+
+def test_load_campaign_runs_raises_naming_a_malformed_gz_file(_campaign):
+    bad_path = _campaign / "campagne-test" / "pas-un-run-2026-10-03.json.gz"
+    _write_gz(bad_path, [{"not": "a run"}])
+
+    with pytest.raises(report_module.InvalidRunFile) as exc_info:
+        report_module.load_campaign_runs("campagne-test")
+
+    assert bad_path.name in str(exc_info.value)

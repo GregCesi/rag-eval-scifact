@@ -69,3 +69,39 @@ def test_main_reports_a_sentence_and_exits_cleanly_when_the_campaign_has_no_runs
     out = capsys.readouterr().out
     assert "vide" in out
     assert not (results_dir / "vide" / "RAPPORT-PAR-CATEGORIE.md").exists()
+
+
+def test_main_ignores_a_non_run_shaped_json_file(_isolated_results):
+    """EXE-156, critère 1 : un fichier .json qui n'a pas la forme d'un run
+    (ex. hyde.json) rangé dans le dossier de la campagne n'empêche pas le
+    rapport de s'écrire."""
+    results_dir = _isolated_results
+    (results_dir / "fab-campagne").mkdir()
+    _write_gz(results_dir / "fab-campagne" / "strat-a-sans-reranker-1.json.gz", RUN)
+    (results_dir / "fab-campagne" / "hyde.json").write_text(
+        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+    )
+
+    run_category_report.main(["--campagne", "fab-campagne"])
+
+    content = (results_dir / "fab-campagne" / "RAPPORT-PAR-CATEGORIE.md").read_text(
+        encoding="utf-8"
+    )
+    assert "hyde" not in content
+
+
+def test_main_reports_a_sentence_and_exits_cleanly_on_a_malformed_gz_file(
+    _isolated_results, capsys
+):
+    """EXE-156, critère 4 : un fichier .json.gz qui n'a pas la forme d'un run
+    produit une phrase qui le nomme, sans trace Python."""
+    results_dir = _isolated_results
+    bad_path = results_dir / "fab-campagne" / "pas-un-run-1.json.gz"
+    _write_gz(bad_path, [{"not": "a run"}])
+
+    with pytest.raises(SystemExit):
+        run_category_report.main(["--campagne", "fab-campagne"])
+
+    out = capsys.readouterr().out
+    assert bad_path.name in out
+    assert not (results_dir / "fab-campagne" / "RAPPORT-PAR-CATEGORIE.md").exists()

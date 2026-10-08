@@ -496,3 +496,24 @@ def test_write_report_for_campaign_raises_when_the_campaign_has_no_runs(
         category_report.write_report_for_campaign("vide")
 
     assert not (results_dir / "vide" / "RAPPORT-PAR-CATEGORIE.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# EXE-156 — un fichier .json qui n'a pas la forme d'un run (ex. hyde.json)
+# ne casse pas le rapport par catégorie d'une campagne nommée.
+# ---------------------------------------------------------------------------
+
+
+def test_write_report_for_campaign_ignores_a_non_run_shaped_json_file(_fab_campaign):
+    results_dir, fab_runs = _fab_campaign
+    (results_dir / "fab-campagne" / "hyde.json").write_text(
+        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+    )
+
+    content = category_report.write_report_for_campaign("fab-campagne").read_text(
+        encoding="utf-8"
+    )
+
+    assert "hyde" not in content
+    for run_data in fab_runs:
+        assert run_data["run_name"] in content

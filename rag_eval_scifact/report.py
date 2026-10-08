@@ -35,11 +35,39 @@ def find_baseline_path() -> Path:
     return matches[-1]
 
 
+class InvalidRunFile(Exception):
+    """Levée par `load_campaign_runs` quand un `.json.gz` n'a pas la forme
+    d'un run (EXE-156) : ce format ne devrait jamais porter autre chose
+    qu'un run commité, à la différence d'un `.json` nu (ex. `hyde.json`)."""
+
+
+def _looks_like_run(data: object) -> bool:
+    return isinstance(data, dict) and "run_name" in data and "queries" in data
+
+
 def load_campaign_runs(campagne: str) -> list[dict]:
-    """Charge tous les runs de `campagne`, triés par nom de fichier (ordre stable)."""
+    """Charge tous les runs de `campagne`, triés par nom de fichier (ordre stable).
+
+    Un `.json` sans forme de run est ignoré en silence (ex. `hyde.json`, une
+    liste de faux résumés) : ce format sert aussi à des sous-produits qui ne
+    sont pas des runs. Un `.json.gz` sans forme de run lève `InvalidRunFile`
+    en nommant le fichier (EXE-156) : ce format est toujours un run commité.
+    """
     campaign_dir = RESULTS_DIR / campagne
-    paths = sorted(campaign_dir.glob("*.json.gz")) + sorted(campaign_dir.glob("*.json"))
-    return [load_run(p) for p in sorted(paths, key=lambda p: p.name)]
+    runs_by_path: dict[Path, dict] = {}
+
+    for path in sorted(campaign_dir.glob("*.json.gz")):
+        data = load_run(path)
+        if not _looks_like_run(data):
+            raise InvalidRunFile(f"fichier de run invalide : {path}")
+        runs_by_path[path] = data
+
+    for path in sorted(campaign_dir.glob("*.json")):
+        data = load_run(path)
+        if _looks_like_run(data):
+            runs_by_path[path] = data
+
+    return [runs_by_path[p] for p in sorted(runs_by_path, key=lambda p: p.name)]
 
 
 def _bucket_values(run_data: dict) -> dict[str, float]:
