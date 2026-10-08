@@ -40,3 +40,4 @@
 | v4-leviers/medcpt-passages | 2026-10-06 | 0.5699 | 0.8014 | 0.8699 | 0.9717 | 0.7281 | 0.6905 | max_seq=512 | |
 | v4-leviers/qwen3-passages-reference | 2026-10-07 | 0.5724 | 0.8055 | 0.8539 | 0.9533 | 0.7319 | 0.7013 | max_seq=2048 | |
 | v4-leviers/qwen3-passages-sans-instruction | 2026-10-07 | 0.5530 | 0.7595 | 0.8306 | 0.9333 | 0.7025 | 0.6691 | max_seq=2048 | |
+| v4-leviers/qwen3-4b-passages | 2026-10-07 | 0.6463 | 0.8753 | 0.9189 | 0.9733 | 0.7912 | 0.7556 | max_seq=2048 | |
