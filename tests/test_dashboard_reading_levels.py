@@ -27,6 +27,15 @@ QWEN_PASSAGES_SANS = (
     ".json.gz"
 )
 
+# Format réel de hyde.json (EXE-156) : une liste d'objets, jamais un run.
+HYDE_ENTRY = {
+    "claim_id": "1",
+    "claim_text": "0-dimensional biomaterials show inductive properties.",
+    "hyde_text": "faux résumé",
+    "model": "llama3.1:8b",
+    "duration_seconds": 12.3,
+}
+
 
 def _column_stub(monkeypatch):
     class _Column:
@@ -410,9 +419,7 @@ def test_non_run_shaped_json_file_is_not_listed_as_a_run(
     run de la page « Niveaux de lecture » et ne la casse pas."""
     campaign_name = "_test-dashboard-non-run-json"
     campaign_dir = _real_fab_campaign(campaign_name, ["strat-a-sans-reranker"])
-    (campaign_dir / "hyde.json").write_text(
-        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
-    )
+    (campaign_dir / "hyde.json").write_text(json.dumps([HYDE_ENTRY]), encoding="utf-8")
 
     _stub_common_widgets(monkeypatch)
     multiselect_calls = []

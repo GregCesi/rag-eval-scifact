@@ -22,6 +22,15 @@ from rag_eval_scifact import report as report_module
 from rag_eval_scifact.metrics import ndcg_at_k
 from rag_eval_scifact.stats import paired_permutation_test
 
+# Format réel de hyde.json (EXE-156) : une liste d'objets, jamais un run.
+HYDE_ENTRY = {
+    "claim_id": "1",
+    "claim_text": "0-dimensional biomaterials show inductive properties.",
+    "hyde_text": "faux résumé",
+    "model": "llama3.1:8b",
+    "duration_seconds": 12.3,
+}
+
 ORIGIN_LABELS = {
     "pairs": [
         {
@@ -507,7 +516,7 @@ def test_write_report_for_campaign_raises_when_the_campaign_has_no_runs(
 def test_write_report_for_campaign_ignores_a_non_run_shaped_json_file(_fab_campaign):
     results_dir, fab_runs = _fab_campaign
     (results_dir / "fab-campagne" / "hyde.json").write_text(
-        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+        json.dumps([HYDE_ENTRY]), encoding="utf-8"
     )
 
     content = category_report.write_report_for_campaign("fab-campagne").read_text(

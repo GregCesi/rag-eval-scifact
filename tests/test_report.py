@@ -21,6 +21,15 @@ from rag_eval_scifact.compare import compare_runs
 QUERY_IDS = ["q1", "q2", "q3"]
 QRELS = {"q1": {"d1"}, "q2": {"d2"}, "q3": {"d3"}}
 
+# Format réel de hyde.json (EXE-156) : une liste d'objets, jamais un run.
+HYDE_ENTRY = {
+    "claim_id": "1",
+    "claim_text": "0-dimensional biomaterials show inductive properties.",
+    "hyde_text": "faux résumé",
+    "model": "llama3.1:8b",
+    "duration_seconds": 12.3,
+}
+
 SIX_METRICS_A = {
     "recall@1": 0.5,
     "recall@5": 0.7,
@@ -194,7 +203,7 @@ def test_report_regenerates_identically_when_results_are_unchanged(_campaign):
 
 def test_load_campaign_runs_ignores_a_non_run_shaped_json_file(_campaign):
     (_campaign / "campagne-test" / "hyde.json").write_text(
-        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+        json.dumps([HYDE_ENTRY]), encoding="utf-8"
     )
 
     runs = report_module.load_campaign_runs("campagne-test")
@@ -206,7 +215,7 @@ def test_write_report_ignores_a_non_run_shaped_json_file_in_the_campaign_dir(
     _campaign,
 ):
     (_campaign / "campagne-test" / "hyde.json").write_text(
-        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+        json.dumps([HYDE_ENTRY]), encoding="utf-8"
     )
 
     content = report_module.write_report("campagne-test").read_text(encoding="utf-8")

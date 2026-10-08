@@ -26,6 +26,15 @@ RUN = {
     "queries": [],
 }
 
+# Format réel de hyde.json (EXE-156) : une liste d'objets, jamais un run.
+HYDE_ENTRY = {
+    "claim_id": "1",
+    "claim_text": "0-dimensional biomaterials show inductive properties.",
+    "hyde_text": "faux résumé",
+    "model": "llama3.1:8b",
+    "duration_seconds": 12.3,
+}
+
 
 def _write_gz(path: Path, run_data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -79,7 +88,7 @@ def test_main_ignores_a_non_run_shaped_json_file(_isolated_results):
     (results_dir / "fab-campagne").mkdir()
     _write_gz(results_dir / "fab-campagne" / "strat-a-sans-reranker-1.json.gz", RUN)
     (results_dir / "fab-campagne" / "hyde.json").write_text(
-        json.dumps([{"claim_id": "1", "hyde_text": "faux résumé"}]), encoding="utf-8"
+        json.dumps([HYDE_ENTRY]), encoding="utf-8"
     )
 
     run_category_report.main(["--campagne", "fab-campagne"])
