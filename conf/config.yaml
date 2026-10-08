@@ -65,6 +65,16 @@ rerank:
   name: none
   model: cross-encoder/ms-marco-MiniLM-L-6-v2
   top_n: 100
+  # Instruction passée au reranker à la place de son instruction par défaut
+  # (EXE-157 critère 5 ; prompt du `CrossEncoder` — Qwen3-Reranker). Chaîne
+  # vide (défaut) : aucun prompt n'est passé, comportement inchangé pour les
+  # rerankers sans notion d'instruction (MiniLM, bge, MedCPT).
+  instruction: ""
+  # Charge le modèle en demi-précision (EXE-157 critère 6) : nécessaire pour
+  # un gros reranker (Qwen3-Reranker-4B, ~16 Go en pleine précision) sur une
+  # machine à mémoire limitée. Faux (défaut) : chargement en pleine précision,
+  # comportement inchangé.
+  half_precision: false
 split: test
 top_k: 100
 

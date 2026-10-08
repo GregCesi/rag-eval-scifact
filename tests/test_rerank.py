@@ -5,10 +5,16 @@ Aucun modèle cross-encoder chargé : `score_fn` est toujours fabriqué.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 import rag_eval_scifact.rerank as rerank_module
-from rag_eval_scifact.rerank import rerank_campaign_results, rerank_ranking
+from rag_eval_scifact.rerank import (
+    essai_rerank_campaign,
+    rerank_campaign_results,
+    rerank_ranking,
+)
 from rag_eval_scifact.retrieve import RetrievalResult
 
 # ---------------------------------------------------------------------------
@@ -150,3 +156,151 @@ def test_rerank_campaign_results_reranks_every_query():
 
     assert len(reranked) == 3
     assert calls == [1, 1, 1]
+
+
+# ---------------------------------------------------------------------------
+# EXE-157 critères 5, 6 — instruction et demi-précision du scorer par défaut
+# (aucun modèle réel chargé : `CrossEncoder` est remplacé par un faux qui
+# enregistre ce qu'il reçoit)
+# ---------------------------------------------------------------------------
+
+
+class _FakeCrossEncoder:
+    instances: ClassVar[list[_FakeCrossEncoder]] = []
+
+    def __init__(self, model_name, **kwargs):
+        self.model_name = model_name
+        self.init_kwargs = kwargs
+        self.predict_calls: list[dict] = []
+        _FakeCrossEncoder.instances.append(self)
+
+    def predict(self, pairs, **kwargs):
+        self.predict_calls.append({"pairs": list(pairs), **kwargs})
+        return [0.0 for _ in pairs]
+
+
+@pytest.fixture
+def fake_cross_encoder(monkeypatch):
+    _FakeCrossEncoder.instances = []
+    monkeypatch.setattr("sentence_transformers.CrossEncoder", _FakeCrossEncoder)
+    return _FakeCrossEncoder
+
+
+def test_default_scorer_passes_instruction_as_predict_prompt(fake_cross_encoder):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        model_name="Qwen/Qwen3-Reranker-0.6B",
+        instruction="Given a scientific claim, retrieve documents that support or refute it",
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert instance.model_name == "Qwen/Qwen3-Reranker-0.6B"
+    assert instance.predict_calls[0]["prompt"] == (
+        "Given a scientific claim, retrieve documents that support or refute it"
+    )
+
+
+def test_default_scorer_passes_no_prompt_when_instruction_is_empty(fake_cross_encoder):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        model_name="cross-encoder/ms-marco-MiniLM-L-6-v2",
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert "prompt" not in instance.predict_calls[0]
+
+
+def test_default_scorer_loads_model_in_half_precision_when_asked(fake_cross_encoder):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        model_name="Qwen/Qwen3-Reranker-4B",
+        half_precision=True,
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert instance.init_kwargs.get("model_kwargs") == {"torch_dtype": "float16"}
+
+
+def test_default_scorer_does_not_set_half_precision_by_default(fake_cross_encoder):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results, {"d1": "t1"}, top_n=20, model_name="BAAI/bge-reranker-v2-m3"
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert "model_kwargs" not in instance.init_kwargs
+
+
+# ---------------------------------------------------------------------------
+# EXE-157 critère 7 — essai du reranker : échantillon de requêtes, durée
+# mesurée et extrapolée, rien n'est écrit
+# ---------------------------------------------------------------------------
+
+
+def test_essai_rerank_campaign_times_only_the_sample_and_extrapolates(monkeypatch):
+    results = [
+        RetrievalResult(
+            query_id=f"q{i}",
+            query_text=f"claim{i}",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+        for i in range(15)
+    ]
+    seen_sample_sizes: list[int] = []
+
+    def fake_score_fn(pairs):
+        seen_sample_sizes.append(len(pairs))
+        return [0.0] * len(pairs)
+
+    clock = iter([10.0, 11.0])
+    monkeypatch.setattr(rerank_module.time, "perf_counter", lambda: next(clock))
+
+    stats = essai_rerank_campaign(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        score_fn=fake_score_fn,
+        sample_size=10,
+        n_claims=300,
+    )
+
+    assert len(seen_sample_sizes) == 10  # seules les 10 premières affirmations
+    assert stats["duration_seconds"] == pytest.approx(1.0)
+    assert stats["extrapolated_minutes"] == pytest.approx(1.0 * (300 / 10) / 60)

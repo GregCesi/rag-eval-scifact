@@ -22,16 +22,28 @@ DEFAULT_RERANK_TOP_N = 100
 
 def _default_cross_encoder_scorer(
     model_name: str,
+    instruction: str = "",
+    half_precision: bool = False,
 ) -> Callable[[list[tuple[str, str]]], list[float]]:
-    """Encode les paires (claim, document) avec un `CrossEncoder` chargé paresseusement."""
+    """Encode les paires (claim, document) avec un `CrossEncoder` chargé paresseusement.
+
+    `instruction`, quand non vide, remplace l'instruction par défaut du modèle
+    (prompt du `CrossEncoder` — EXE-157 critère 5) ; vide, aucun prompt n'est
+    passé. `half_precision` charge le modèle en demi-précision (EXE-157
+    critère 6).
+    """
     model_box: dict[str, object] = {}
 
     def _score(pairs: list[tuple[str, str]]) -> list[float]:
         if "model" not in model_box:
             from sentence_transformers import CrossEncoder
 
-            model_box["model"] = CrossEncoder(model_name)
-        scores = model_box["model"].predict(list(pairs))
+            init_kwargs = {}
+            if half_precision:
+                init_kwargs["model_kwargs"] = {"torch_dtype": "float16"}
+            model_box["model"] = CrossEncoder(model_name, **init_kwargs)
+        predict_kwargs = {"prompt": instruction} if instruction else {}
+        scores = model_box["model"].predict(list(pairs), **predict_kwargs)
         return [float(s) for s in scores]
 
     return _score
@@ -75,14 +87,20 @@ def rerank_campaign_results(
     doc_texts: dict[str, str],
     top_n: int = DEFAULT_RERANK_TOP_N,
     model_name: str = DEFAULT_RERANK_MODEL,
+    instruction: str = "",
+    half_precision: bool = False,
     score_fn: Callable[[list[tuple[str, str]]], list[float]] | None = None,
 ) -> tuple[list[RetrievalResult], float]:
     """Reclasse chaque requête d'un run et mesure la durée totale du reclassement.
 
     `score_fn` injectable (tests, EXE-96 critère 8) : aucun modèle cross-encoder
-    n'est chargé tant qu'il n'est pas fourni par l'appelant.
+    n'est chargé tant qu'il n'est pas fourni par l'appelant. `instruction` et
+    `half_precision` (EXE-157 critères 5, 6) n'affectent que le scorer par
+    défaut — ignorés quand `score_fn` est fourni.
     """
-    score = score_fn or _default_cross_encoder_scorer(model_name)
+    score = score_fn or _default_cross_encoder_scorer(
+        model_name, instruction, half_precision
+    )
 
     start = time.perf_counter()
     reranked = [
@@ -97,3 +115,41 @@ def rerank_campaign_results(
     ]
     duration = time.perf_counter() - start
     return reranked, duration
+
+
+def essai_rerank_campaign(
+    results: list[RetrievalResult],
+    doc_texts: dict[str, str],
+    top_n: int,
+    model_name: str = DEFAULT_RERANK_MODEL,
+    instruction: str = "",
+    half_precision: bool = False,
+    score_fn: Callable[[list[tuple[str, str]]], list[float]] | None = None,
+    sample_size: int = 10,
+    n_claims: int = 300,
+) -> dict[str, float]:
+    """Essai rapide (EXE-157 critère 7) : reclasse les `top_n` premiers documents
+    des `sample_size` premières requêtes de `results`, chronomètre et extrapole
+    à `n_claims`.
+
+    `results` : classement de premier étage déjà construit (cache), inchangé
+    par cet essai. N'écrit jamais de fichier de résultats ni de run MLflow.
+    """
+    sample = results[:sample_size]
+    _, duration_seconds = rerank_campaign_results(
+        sample,
+        doc_texts,
+        top_n=top_n,
+        model_name=model_name,
+        instruction=instruction,
+        half_precision=half_precision,
+        score_fn=score_fn,
+    )
+
+    n_sample = len(sample) or 1
+    extrapolated_minutes = duration_seconds * (n_claims / n_sample) / 60
+
+    return {
+        "duration_seconds": duration_seconds,
+        "extrapolated_minutes": extrapolated_minutes,
+    }

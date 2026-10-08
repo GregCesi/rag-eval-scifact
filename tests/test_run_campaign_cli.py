@@ -346,6 +346,50 @@ def test_rerank_cross_encoder_duration_is_logged_in_mlflow(_isolated_cli, monkey
     assert run.data.metrics["rerank_duration_seconds"] == pytest.approx(2.5)
 
 
+def test_rerank_instruction_and_half_precision_are_read_from_config(
+    _isolated_cli, monkeypatch
+):
+    """EXE-157 critères 5, 6 : `rerank.instruction` et `rerank.half_precision`
+    de la config Hydra atteignent `rerank_campaign_results`."""
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "T1", "text": ""}],
+    )
+    captured: dict = {}
+
+    def _capture_rerank(results, doc_texts, **kwargs):
+        captured.update(kwargs)
+        return results, 0.1
+
+    monkeypatch.setattr(run_campaign_module, "rerank_campaign_results", _capture_rerank)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "rerank.name=cross-encoder",
+            "rerank.instruction='Given a scientific claim, retrieve documents that support or refute it'",
+            "rerank.half_precision=true",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    run_campaign_module._cli()
+
+    assert captured["instruction"] == (
+        "Given a scientific claim, retrieve documents that support or refute it"
+    )
+    assert captured["half_precision"] is True
+
+
 # ---------------------------------------------------------------------------
 # EXE-141, critère 10 — refus de lancer un run « query_source=hyde » tant que
 # hyde.json est absent ou incomplet

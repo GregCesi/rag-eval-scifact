@@ -455,3 +455,114 @@ def test_v4_leviers_grid_has_no_reranker_bm25_or_hybrid():
         cfg = _compose_combo(combo)
         assert cfg.rerank is None
         assert cfg.retriever.name == "dense"
+
+
+# ---------------------------------------------------------------------------
+# EXE-157 critères 1, 2, 3, 5, 6 — v5-rerankers : six combinaisons, même
+# recherche que la référence v4-leviers, seul le reranker change
+# ---------------------------------------------------------------------------
+
+V5_RERANKER_RUN_NAMES = {
+    "qwen3-passages-sans-reranker",
+    "rerank-minilm-top20",
+    "rerank-bge-m3-top20",
+    "rerank-medcpt-top20",
+    "rerank-qwen3-0.6b-top20",
+    "rerank-qwen3-4b-top20",
+}
+
+
+def test_load_grid_combos_reads_v5_rerankers_six_named_runs():
+    combos = load_grid_combos(campagne="v5-rerankers")
+    run_names = {c["run_name"] for c in combos}
+    assert run_names == V5_RERANKER_RUN_NAMES
+
+
+def test_v5_rerankers_runs_match_v4_leviers_reference_retriever_key_for_key():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+
+    reference = next(
+        c for c in v4_combos if c["run_name"] == "qwen3-passages-reference"
+    )
+    cfg_reference = _compose_combo(reference)
+
+    for combo in v5_combos:
+        cfg = _compose_combo(combo)
+        assert cfg.retriever == cfg_reference.retriever, combo["run_name"]
+
+
+def test_v5_rerankers_sans_reranker_run_has_no_reranker():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+    combo = next(
+        c for c in v5_combos if c["run_name"] == "qwen3-passages-sans-reranker"
+    )
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank is None
+
+
+def test_v5_rerankers_reranker_runs_reread_top_20_with_their_named_model():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+    expected_models = {
+        "rerank-minilm-top20": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "rerank-bge-m3-top20": "BAAI/bge-reranker-v2-m3",
+        "rerank-medcpt-top20": "ncbi/MedCPT-Cross-Encoder",
+        "rerank-qwen3-0.6b-top20": "Qwen/Qwen3-Reranker-0.6B",
+        "rerank-qwen3-4b-top20": "Qwen/Qwen3-Reranker-4B",
+    }
+
+    for run_name, model in expected_models.items():
+        combo = next(c for c in v5_combos if c["run_name"] == run_name)
+        cfg = _compose_combo(combo)
+
+        assert cfg.rerank.name == "cross-encoder"
+        assert cfg.rerank.model == model
+        assert cfg.rerank.top_n == 20
+
+
+def test_v5_rerankers_only_the_two_qwen3_rerankers_get_the_instruction():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+    instructed = {"rerank-qwen3-0.6b-top20", "rerank-qwen3-4b-top20"}
+
+    for combo in v5_combos:
+        if combo["run_name"] == "qwen3-passages-sans-reranker":
+            continue
+        cfg = _compose_combo(combo)
+        if combo["run_name"] in instructed:
+            assert cfg.rerank.instruction == (
+                "Given a scientific claim, retrieve documents that support or refute it"
+            )
+        else:
+            assert cfg.rerank.instruction == ""
+
+
+def test_v5_rerankers_only_the_4b_run_uses_half_precision():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+
+    for combo in v5_combos:
+        if combo["run_name"] == "qwen3-passages-sans-reranker":
+            continue
+        cfg = _compose_combo(combo)
+        if combo["run_name"] == "rerank-qwen3-4b-top20":
+            assert cfg.rerank.half_precision is True
+        else:
+            assert cfg.rerank.half_precision is False
+
+
+# ---------------------------------------------------------------------------
+# EXE-157 critère 9 — v2-grid garde sa configuration de reranker inchangée
+# ---------------------------------------------------------------------------
+
+
+def test_v2_grid_reranker_runs_keep_their_original_top_n_and_no_instruction():
+    combos = load_grid_combos()
+    combo = next(c for c in combos if c["run_name"] == "dense-minilm-256-avec-reranker")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank.model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    assert cfg.rerank.top_n == 100
+    assert cfg.rerank.instruction == ""
+    assert cfg.rerank.half_precision is False

@@ -13,6 +13,7 @@ Usage : python -m rag_eval_scifact.run_grid --list
         python -m rag_eval_scifact.run_grid --campagne dev
         python -m rag_eval_scifact.run_grid --campagne v4-leviers --run qwen3-passages-reference
         python -m rag_eval_scifact.run_grid --campagne v4-leviers --essai medcpt-passages
+        python -m rag_eval_scifact.run_grid --campagne v5-rerankers --essai-rerank rerank-minilm-top20
 """
 
 from __future__ import annotations
@@ -26,8 +27,10 @@ from hydra.core.global_hydra import GlobalHydra
 import rag_eval_scifact.campaign as campaign_module
 import rag_eval_scifact.run_campaign as run_campaign_module
 from rag_eval_scifact.grid import GridFileMissing, has_existing_result, load_grid_combos
+from rag_eval_scifact.hyde import N_CLAIMS
 from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
-from rag_eval_scifact.retrieve import essai_embedding
+from rag_eval_scifact.rerank import essai_rerank_campaign
+from rag_eval_scifact.retrieve import essai_embedding, retrieve_campaign
 from rag_eval_scifact.run_campaign import CONF_DIR
 
 DEFAULT_CAMPAGNE = "v2-grid"
@@ -108,6 +111,17 @@ def main(argv: list[str] | None = None) -> None:
             "durée et son extrapolation au corpus entier, n'écrit rien."
         ),
     )
+    parser.add_argument(
+        "--essai-rerank",
+        dest="essai_rerank_run_name",
+        default=None,
+        help=(
+            "Essai rapide du reranker de ce run nommé : reclasse les top_n "
+            "premiers documents des 10 premières affirmations, affiche la "
+            f"durée et son extrapolation aux {N_CLAIMS} affirmations, n'écrit "
+            "rien."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.list_only:
@@ -138,6 +152,61 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  Durée           : {stats['duration_seconds']:.2f} s")
         print(
             f"  Extrapolation   : {stats['extrapolated_minutes']:.1f} min (corpus entier)"
+        )
+        return
+
+    if args.essai_rerank_run_name is not None:
+        combos = _load_combos_or_exit(args.campagne)
+        combo = _find_combo_or_exit(combos, args.essai_rerank_run_name, args.campagne)
+        cfg = _compose_cfg(args.campagne, combo)
+        if cfg.rerank is None or cfg.rerank.name != "cross-encoder":
+            print(
+                f"{combo['run_name']} ne configure aucun reranker "
+                "(rerank.name=cross-encoder attendu)."
+            )
+            raise SystemExit(1)
+
+        results, _qrels, _dataset_hash, _stats = retrieve_campaign(
+            top_k=cfg.top_k,
+            model_name=cfg.retriever.model,
+            max_seq_length=cfg.retriever.max_seq_length,
+            split=cfg.split,
+            cache_dir=cfg.cache_dir,
+            unit=cfg.retriever.unit,
+            chunk_size=cfg.retriever.chunk_size,
+            chunk_overlap=cfg.retriever.chunk_overlap,
+            grouping=cfg.retriever.grouping,
+            grouping_top_n=cfg.retriever.grouping_top_n,
+            retriever_name=cfg.retriever.name,
+            bm25_k1=cfg.retriever.bm25_k1,
+            bm25_b=cfg.retriever.bm25_b,
+            fusion_mode=cfg.retriever.fusion_mode,
+            rrf_k=cfg.retriever.rrf_k,
+            query_instruction=cfg.retriever.query_instruction,
+            batch_size=cfg.retriever.batch_size,
+            query_model_name=cfg.retriever.query_model or None,
+            query_max_seq_length=cfg.retriever.query_max_seq_length or None,
+            pooling=cfg.retriever.pooling,
+            query_source=cfg.retriever.query_source,
+        )
+        doc_texts = {
+            doc["_id"]: doc["title"] + " " + doc["text"]
+            for doc in load_corpus(CORPUS_PATH)
+        }
+        stats = essai_rerank_campaign(
+            results,
+            doc_texts,
+            top_n=cfg.rerank.top_n,
+            model_name=cfg.rerank.model,
+            instruction=cfg.rerank.instruction,
+            half_precision=cfg.rerank.half_precision,
+            n_claims=N_CLAIMS,
+        )
+        print(f"Essai reranker {combo['run_name']} : 10 premières affirmations")
+        print(f"  Durée           : {stats['duration_seconds']:.2f} s")
+        print(
+            f"  Extrapolation   : {stats['extrapolated_minutes']:.1f} min "
+            f"({N_CLAIMS} affirmations)"
         )
         return
 

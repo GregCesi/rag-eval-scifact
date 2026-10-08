@@ -280,6 +280,37 @@ def test_launch_with_unknown_run_name_lists_known_names(capsys, monkeypatch):
     assert "combo-a" in out
 
 
+def test_list_mode_for_v5_rerankers_shows_its_six_runs_and_count(capsys):
+    run_grid_module.main(["--list", "--campagne", "v5-rerankers"])
+
+    out = capsys.readouterr().out
+    for name in [
+        "qwen3-passages-sans-reranker",
+        "rerank-minilm-top20",
+        "rerank-bge-m3-top20",
+        "rerank-medcpt-top20",
+        "rerank-qwen3-0.6b-top20",
+        "rerank-qwen3-4b-top20",
+    ]:
+        assert name in out
+    assert "6 combinaison(s)" in out
+
+
+def test_launch_refuses_v5_rerankers_without_committed_prediction(capsys, monkeypatch):
+    monkeypatch.setattr(
+        run_grid_module, "_prediction_committed", lambda campagne: False
+    )
+    calls = []
+    monkeypatch.setattr(run_campaign_module, "main", lambda cfg: calls.append(cfg))
+
+    with pytest.raises(SystemExit):
+        run_grid_module.main(["--campagne", "v5-rerankers"])
+
+    out = capsys.readouterr().out
+    assert "results/v5-rerankers/PREDICTION.md" in out
+    assert calls == []
+
+
 def test_essai_with_unknown_run_name_lists_known_names(capsys, monkeypatch):
     monkeypatch.setattr(
         run_grid_module,
@@ -326,3 +357,82 @@ def test_essai_mode_prints_sample_stats_and_writes_no_campaign_file(
     assert "3.2" in out or "3.3" in out
     assert not results_dir.exists() or list(results_dir.rglob("*.json*")) == []
     assert captured["unit"] in {"document", "passages"}
+
+
+# ---------------------------------------------------------------------------
+# EXE-157 critère 7 — essai du reranker d'un run nommé
+# ---------------------------------------------------------------------------
+
+
+def test_essai_rerank_with_unknown_run_name_lists_known_names(capsys, monkeypatch):
+    monkeypatch.setattr(
+        run_grid_module,
+        "load_grid_combos",
+        lambda campagne: [{"run_name": "combo-a", "overrides": []}],
+    )
+
+    with pytest.raises(SystemExit):
+        run_grid_module.main(["--campagne", "dev", "--essai-rerank", "inconnu"])
+
+    out = capsys.readouterr().out
+    assert "inconnu" in out
+    assert "combo-a" in out
+
+
+def test_essai_rerank_refuses_a_run_without_a_reranker(capsys, monkeypatch):
+    monkeypatch.setattr(
+        run_grid_module,
+        "load_grid_combos",
+        lambda campagne: [{"run_name": "combo-a", "overrides": ["rerank=null"]}],
+    )
+
+    with pytest.raises(SystemExit):
+        run_grid_module.main(["--campagne", "dev", "--essai-rerank", "combo-a"])
+
+    out = capsys.readouterr().out
+    assert "combo-a" in out
+    assert "reranker" in out
+
+
+def test_essai_rerank_mode_prints_duration_and_extrapolation_and_writes_nothing(
+    capsys, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        run_grid_module,
+        "load_grid_combos",
+        lambda campagne: [
+            {
+                "run_name": "combo-a",
+                "overrides": [
+                    "rerank.name=cross-encoder",
+                    "rerank.model=cross-encoder/ms-marco-MiniLM-L-6-v2",
+                    "rerank.top_n=20",
+                ],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        run_grid_module, "retrieve_campaign", lambda **kwargs: _fake_retrieve_campaign()
+    )
+    monkeypatch.setattr(run_grid_module, "load_corpus", lambda path: [])
+
+    captured: dict = {}
+
+    def _fake_essai_rerank_campaign(results, doc_texts, **kwargs):
+        captured.update(kwargs)
+        return {"duration_seconds": 0.8, "extrapolated_minutes": 0.4}
+
+    monkeypatch.setattr(
+        run_grid_module, "essai_rerank_campaign", _fake_essai_rerank_campaign
+    )
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(campaign, "RESULTS_DIR", results_dir)
+
+    run_grid_module.main(["--campagne", "dev", "--essai-rerank", "combo-a"])
+
+    out = capsys.readouterr().out
+    assert "0.8" in out
+    assert "0.4" in out
+    assert not results_dir.exists() or list(results_dir.rglob("*.json*")) == []
+    assert captured["top_n"] == 20
+    assert captured["model_name"] == "cross-encoder/ms-marco-MiniLM-L-6-v2"

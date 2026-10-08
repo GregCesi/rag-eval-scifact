@@ -87,6 +87,8 @@ def main(cfg: DictConfig) -> None:
             doc_texts,
             top_n=cfg.rerank.top_n,
             model_name=cfg.rerank.model,
+            instruction=cfg.rerank.instruction,
+            half_precision=cfg.rerank.half_precision,
         )
 
     all_relevant_ids: set[str] = set()
