@@ -23,7 +23,11 @@ from rag_eval_scifact.campaign import run_campaign
 from rag_eval_scifact.hyde import HYDE_PATH, N_CLAIMS, load_hyde_texts
 from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
 from rag_eval_scifact.mlflow_tracking import log_campaign_run, log_query_traces
-from rag_eval_scifact.rerank import rerank_campaign_results
+from rag_eval_scifact.rerank import (
+    format_rerank_oom_message,
+    is_rerank_out_of_memory,
+    rerank_campaign_results,
+)
 from rag_eval_scifact.retrieve import retrieve_campaign
 from rag_eval_scifact.run_output import get_token_counts
 
@@ -82,14 +86,21 @@ def main(cfg: DictConfig) -> None:
             doc["_id"]: doc["title"] + " " + doc["text"]
             for doc in load_corpus(CORPUS_PATH)
         }
-        results, rerank_duration_seconds = rerank_campaign_results(
-            results,
-            doc_texts,
-            top_n=cfg.rerank.top_n,
-            model_name=cfg.rerank.model,
-            instruction=cfg.rerank.instruction,
-            half_precision=cfg.rerank.half_precision,
-        )
+        try:
+            results, rerank_duration_seconds = rerank_campaign_results(
+                results,
+                doc_texts,
+                top_n=cfg.rerank.top_n,
+                model_name=cfg.rerank.model,
+                instruction=cfg.rerank.instruction,
+                half_precision=cfg.rerank.half_precision,
+                batch_size=cfg.rerank.batch_size,
+            )
+        except RuntimeError as exc:
+            if not is_rerank_out_of_memory(exc):
+                raise
+            print(format_rerank_oom_message(cfg.run_name, exc))
+            raise SystemExit(1)
 
     all_relevant_ids: set[str] = set()
     for relevant_set in qrels.values():

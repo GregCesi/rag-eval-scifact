@@ -420,7 +420,11 @@ def test_essai_rerank_mode_prints_duration_and_extrapolation_and_writes_nothing(
 
     def _fake_essai_rerank_campaign(results, doc_texts, **kwargs):
         captured.update(kwargs)
-        return {"duration_seconds": 0.8, "extrapolated_minutes": 0.4}
+        return {
+            "duration_seconds": 0.8,
+            "extrapolated_minutes": 0.4,
+            "memory_gb": 3.5,
+        }
 
     monkeypatch.setattr(
         run_grid_module, "essai_rerank_campaign", _fake_essai_rerank_campaign
@@ -433,6 +437,59 @@ def test_essai_rerank_mode_prints_duration_and_extrapolation_and_writes_nothing(
     out = capsys.readouterr().out
     assert "0.8" in out
     assert "0.4" in out
+    assert "3.5" in out
     assert not results_dir.exists() or list(results_dir.rglob("*.json*")) == []
     assert captured["top_n"] == 20
+    assert captured["batch_size"] == 32
     assert captured["model_name"] == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critère 5 — dépassement mémoire du reranker : une phrase, jamais
+# une trace Python
+# ---------------------------------------------------------------------------
+
+
+def test_essai_rerank_out_of_memory_stops_with_a_sentence_not_a_traceback(
+    capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        run_grid_module,
+        "load_grid_combos",
+        lambda campagne: [
+            {
+                "run_name": "rerank-qwen3-4b-top20",
+                "overrides": [
+                    "rerank.name=cross-encoder",
+                    "rerank.model=Qwen/Qwen3-Reranker-4B",
+                    "rerank.top_n=20",
+                ],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        run_grid_module, "retrieve_campaign", lambda **kwargs: _fake_retrieve_campaign()
+    )
+    monkeypatch.setattr(run_grid_module, "load_corpus", lambda path: [])
+
+    def _fake_essai_rerank_campaign(results, doc_texts, **kwargs):
+        raise RuntimeError(
+            "MPS backend out of memory (MPS allocated: 17.79 GiB, other "
+            "allocations: 1.70 MiB, max allowed: 18.13 GiB). Tried to "
+            "allocate 528.00 MiB"
+        )
+
+    monkeypatch.setattr(
+        run_grid_module, "essai_rerank_campaign", _fake_essai_rerank_campaign
+    )
+
+    with pytest.raises(SystemExit):
+        run_grid_module.main(
+            ["--campagne", "dev", "--essai-rerank", "rerank-qwen3-4b-top20"]
+        )
+
+    out = capsys.readouterr().out
+    assert "rerank-qwen3-4b-top20" in out
+    assert "528.00 MiB" in out
+    assert "18.13 GiB" in out
+    assert "rerank.batch_size" in out

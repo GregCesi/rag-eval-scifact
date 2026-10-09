@@ -75,6 +75,11 @@ rerank:
   # machine à mémoire limitée. Faux (défaut) : chargement en pleine précision,
   # comportement inchangé.
   half_precision: false
+  # Taille de lot envoyée à `CrossEncoder.predict` (EXE-159 critère 3). 32
+  # reproduit le défaut actuel de sentence-transformers : comportement
+  # inchangé pour v2-grid, v4-leviers et les cinq runs déjà faits de
+  # v5-rerankers, qui ne posent pas cette clé.
+  batch_size: 32
 split: test
 top_k: 100
 

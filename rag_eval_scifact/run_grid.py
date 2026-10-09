@@ -29,7 +29,11 @@ import rag_eval_scifact.run_campaign as run_campaign_module
 from rag_eval_scifact.grid import GridFileMissing, has_existing_result, load_grid_combos
 from rag_eval_scifact.hyde import N_CLAIMS
 from rag_eval_scifact.ingest import CORPUS_PATH, load_corpus
-from rag_eval_scifact.rerank import essai_rerank_campaign
+from rag_eval_scifact.rerank import (
+    essai_rerank_campaign,
+    format_rerank_oom_message,
+    is_rerank_out_of_memory,
+)
 from rag_eval_scifact.retrieve import essai_embedding, retrieve_campaign
 from rag_eval_scifact.run_campaign import CONF_DIR
 
@@ -193,21 +197,29 @@ def main(argv: list[str] | None = None) -> None:
             doc["_id"]: doc["title"] + " " + doc["text"]
             for doc in load_corpus(CORPUS_PATH)
         }
-        stats = essai_rerank_campaign(
-            results,
-            doc_texts,
-            top_n=cfg.rerank.top_n,
-            model_name=cfg.rerank.model,
-            instruction=cfg.rerank.instruction,
-            half_precision=cfg.rerank.half_precision,
-            n_claims=N_CLAIMS,
-        )
+        try:
+            stats = essai_rerank_campaign(
+                results,
+                doc_texts,
+                top_n=cfg.rerank.top_n,
+                model_name=cfg.rerank.model,
+                instruction=cfg.rerank.instruction,
+                half_precision=cfg.rerank.half_precision,
+                batch_size=cfg.rerank.batch_size,
+                n_claims=N_CLAIMS,
+            )
+        except RuntimeError as exc:
+            if not is_rerank_out_of_memory(exc):
+                raise
+            print(format_rerank_oom_message(combo["run_name"], exc))
+            raise SystemExit(1)
         print(f"Essai reranker {combo['run_name']} : 10 premières affirmations")
         print(f"  Durée           : {stats['duration_seconds']:.2f} s")
         print(
             f"  Extrapolation   : {stats['extrapolated_minutes']:.1f} min "
             f"({N_CLAIMS} affirmations)"
         )
+        print(f"  Mémoire         : {stats['memory_gb']:.2f} Go")
         return
 
     combos = _load_combos_or_exit(args.campagne)

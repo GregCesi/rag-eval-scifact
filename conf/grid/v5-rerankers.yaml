@@ -4,7 +4,8 @@
 # documents du classement de premier étage (contre 100 dans v2-grid). Les
 # deux rerankers Qwen3-Reranker reçoivent une instruction explicite (critère
 # 5) ; les trois autres n'en reçoivent aucune. Le reranker Qwen3-Reranker-4B
-# charge son modèle en demi-précision (critère 6).
+# charge son modèle en demi-précision (critère 6) et reçoit ses paires par
+# lots de 4 (EXE-159 critère 4), contre le défaut (32) des cinq autres runs.
 runs:
   - run_name: qwen3-passages-sans-reranker
     overrides:
@@ -85,3 +86,4 @@ runs:
       - rerank.top_n=20
       - "rerank.instruction='Given a scientific claim, retrieve documents that support or refute it'"
       - rerank.half_precision=true
+      - rerank.batch_size=4

@@ -566,3 +566,31 @@ def test_v2_grid_reranker_runs_keep_their_original_top_n_and_no_instruction():
     assert cfg.rerank.top_n == 100
     assert cfg.rerank.instruction == ""
     assert cfg.rerank.half_precision is False
+    assert cfg.rerank.batch_size == 32
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critères 3, 4 — taille de lot du reranker : clé de config, défaut
+# inchangé pour les runs déjà faits, seul le run 4B la réduit
+# ---------------------------------------------------------------------------
+
+
+def test_default_config_rerank_batch_size_is_32():
+    combo = {"run_name": "x", "overrides": []}
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank.batch_size == 32
+
+
+def test_v5_rerankers_only_the_4b_run_overrides_the_batch_size():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+
+    for combo in v5_combos:
+        if combo["run_name"] == "qwen3-passages-sans-reranker":
+            continue
+        cfg = _compose_combo(combo)
+        if combo["run_name"] == "rerank-qwen3-4b-top20":
+            assert cfg.rerank.batch_size == 4
+        else:
+            assert cfg.rerank.batch_size == 32

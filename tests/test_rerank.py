@@ -12,6 +12,8 @@ import pytest
 import rag_eval_scifact.rerank as rerank_module
 from rag_eval_scifact.rerank import (
     essai_rerank_campaign,
+    format_rerank_oom_message,
+    is_rerank_out_of_memory,
     rerank_campaign_results,
     rerank_ranking,
 )
@@ -269,6 +271,54 @@ def test_default_scorer_does_not_set_half_precision_by_default(fake_cross_encode
 
 
 # ---------------------------------------------------------------------------
+# EXE-159 critère 3 — taille de lot envoyée à `CrossEncoder.predict`
+# ---------------------------------------------------------------------------
+
+
+def test_default_scorer_passes_the_configured_batch_size_to_predict(
+    fake_cross_encoder,
+):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        model_name="Qwen/Qwen3-Reranker-4B",
+        batch_size=4,
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert instance.predict_calls[0]["batch_size"] == 4
+
+
+def test_default_scorer_uses_32_as_the_default_batch_size(fake_cross_encoder):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+
+    rerank_campaign_results(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        model_name="cross-encoder/ms-marco-MiniLM-L-6-v2",
+    )
+
+    instance = fake_cross_encoder.instances[0]
+    assert instance.predict_calls[0]["batch_size"] == 32
+
+
+# ---------------------------------------------------------------------------
 # EXE-157 critère 7 — essai du reranker : échantillon de requêtes, durée
 # mesurée et extrapolée, rien n'est écrit
 # ---------------------------------------------------------------------------
@@ -304,3 +354,118 @@ def test_essai_rerank_campaign_times_only_the_sample_and_extrapolates(monkeypatc
     assert len(seen_sample_sizes) == 10  # seules les 10 premières affirmations
     assert stats["duration_seconds"] == pytest.approx(1.0)
     assert stats["extrapolated_minutes"] == pytest.approx(1.0 * (300 / 10) / 60)
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critère 2 — mémoire occupée sur l'accélérateur, rapportée en Go
+# ---------------------------------------------------------------------------
+
+
+def test_essai_rerank_campaign_reports_accelerator_memory_in_gb(monkeypatch):
+    results = [
+        RetrievalResult(
+            query_id="q1",
+            query_text="une affirmation",
+            retrieved=[{"doc_id": "d1", "rank": 1, "score": 0.5}],
+        )
+    ]
+    monkeypatch.setattr(rerank_module, "_accelerator_memory_gb", lambda: 8.5)
+
+    stats = essai_rerank_campaign(
+        results,
+        {"d1": "t1"},
+        top_n=20,
+        score_fn=lambda pairs: [0.0] * len(pairs),
+    )
+
+    assert stats["memory_gb"] == 8.5
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critère 1 — la demi-précision charge réellement des poids float16,
+# vérifié sur le modèle construit par le code de chargement (pas sur les
+# arguments passés), avec un petit modèle de test, sans réseau
+# ---------------------------------------------------------------------------
+
+
+def _write_tiny_sequence_classification_model(path) -> None:
+    from transformers import (
+        AutoModelForSequenceClassification,
+        BertConfig,
+        BertTokenizerFast,
+    )
+
+    config = BertConfig(
+        vocab_size=99,
+        hidden_size=8,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        intermediate_size=16,
+        max_position_embeddings=16,
+        num_labels=1,
+    )
+    AutoModelForSequenceClassification.from_config(config).save_pretrained(path)
+
+    vocab = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"] + [
+        f"tok{i}" for i in range(94)
+    ]
+    vocab_path = path / "vocab.txt"
+    vocab_path.write_text("\n".join(vocab), encoding="utf-8")
+    BertTokenizerFast(vocab_file=str(vocab_path)).save_pretrained(path)
+
+
+def test_half_precision_loads_real_float16_weights_on_the_built_model(tmp_path):
+    import torch
+
+    _write_tiny_sequence_classification_model(tmp_path)
+
+    model = rerank_module._load_cross_encoder(str(tmp_path), half_precision=True)
+
+    assert next(model.model.parameters()).dtype is torch.float16
+
+
+def test_without_half_precision_the_built_model_keeps_full_precision_weights(
+    tmp_path,
+):
+    import torch
+
+    _write_tiny_sequence_classification_model(tmp_path)
+
+    model = rerank_module._load_cross_encoder(str(tmp_path), half_precision=False)
+
+    assert next(model.model.parameters()).dtype is torch.float32
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critère 5 — dépassement mémoire du reranker : détection et message
+# de remplacement de la trace Python, sans charger aucun modèle
+# ---------------------------------------------------------------------------
+
+
+def test_is_rerank_out_of_memory_true_for_the_mps_oom_runtime_error():
+    exc = RuntimeError(
+        "MPS backend out of memory (MPS allocated: 17.79 GiB, other "
+        "allocations: 1.70 MiB, max allowed: 18.13 GiB). Tried to allocate "
+        "528.00 MiB"
+    )
+
+    assert is_rerank_out_of_memory(exc) is True
+
+
+def test_is_rerank_out_of_memory_false_for_an_unrelated_runtime_error():
+    assert is_rerank_out_of_memory(RuntimeError("modèle introuvable")) is False
+
+
+def test_format_rerank_oom_message_names_the_run_and_the_reported_memory():
+    exc = RuntimeError(
+        "MPS backend out of memory (MPS allocated: 17.79 GiB, other "
+        "allocations: 1.70 MiB, max allowed: 18.13 GiB). Tried to allocate "
+        "528.00 MiB"
+    )
+
+    message = format_rerank_oom_message("rerank-qwen3-4b-top20", exc)
+
+    assert "rerank-qwen3-4b-top20" in message
+    assert "528.00 MiB" in message
+    assert "18.13 GiB" in message
+    assert "rerank.batch_size" in message

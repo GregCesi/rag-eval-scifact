@@ -376,6 +376,7 @@ def test_rerank_instruction_and_half_precision_are_read_from_config(
             "rerank.name=cross-encoder",
             "rerank.instruction='Given a scientific claim, retrieve documents that support or refute it'",
             "rerank.half_precision=true",
+            "rerank.batch_size=4",
             "tracing=false",
         ],
     )
@@ -388,6 +389,59 @@ def test_rerank_instruction_and_half_precision_are_read_from_config(
         "Given a scientific claim, retrieve documents that support or refute it"
     )
     assert captured["half_precision"] is True
+    assert captured["batch_size"] == 4
+
+
+# ---------------------------------------------------------------------------
+# EXE-159 critère 5 — dépassement mémoire du reranker : une phrase, jamais
+# une trace Python, sur le chemin d'un run complet
+# ---------------------------------------------------------------------------
+
+
+def test_rerank_out_of_memory_stops_with_a_sentence_not_a_traceback(
+    _isolated_cli, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        run_campaign_module, "retrieve_campaign", _fake_retrieve_campaign
+    )
+    monkeypatch.setattr(run_campaign_module, "get_token_counts", lambda ids: {})
+    monkeypatch.setattr(
+        run_campaign_module,
+        "load_corpus",
+        lambda path: [{"_id": "d1", "title": "T1", "text": ""}],
+    )
+
+    def _raise_oom(results, doc_texts, **kwargs):
+        raise RuntimeError(
+            "MPS backend out of memory (MPS allocated: 17.79 GiB, other "
+            "allocations: 1.70 MiB, max allowed: 18.13 GiB). Tried to "
+            "allocate 528.00 MiB"
+        )
+
+    monkeypatch.setattr(run_campaign_module, "rerank_campaign_results", _raise_oom)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_campaign.py",
+            "campagne=dev",
+            "run_name=rerank-qwen3-4b-top20",
+            "rerank.name=cross-encoder",
+            "rerank.model=Qwen/Qwen3-Reranker-4B",
+            "tracing=false",
+        ],
+    )
+
+    if GlobalHydra().is_initialized():
+        GlobalHydra.instance().clear()
+    with pytest.raises(SystemExit):
+        run_campaign_module._cli()
+
+    out = capsys.readouterr().out
+    assert "rerank-qwen3-4b-top20" in out
+    assert "528.00 MiB" in out
+    assert "18.13 GiB" in out
+    assert "rerank.batch_size" in out
 
 
 # ---------------------------------------------------------------------------
