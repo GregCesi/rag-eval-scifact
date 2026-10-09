@@ -41,3 +41,8 @@
 | v4-leviers/qwen3-passages-reference | 2026-10-07 | 0.5724 | 0.8055 | 0.8539 | 0.9533 | 0.7319 | 0.7013 | max_seq=2048 | |
 | v4-leviers/qwen3-passages-sans-instruction | 2026-10-07 | 0.5530 | 0.7595 | 0.8306 | 0.9333 | 0.7025 | 0.6691 | max_seq=2048 | |
 | v4-leviers/qwen3-4b-passages | 2026-10-07 | 0.6463 | 0.8753 | 0.9189 | 0.9733 | 0.7912 | 0.7556 | max_seq=2048 | |
+| v5-rerankers/qwen3-passages-sans-reranker | 2026-10-08 | 0.5724 | 0.8055 | 0.8539 | 0.9533 | 0.7319 | 0.7013 | max_seq=2048 | |
+| v5-rerankers/rerank-minilm-top20 | 2026-10-08 | 0.5586 | 0.7722 | 0.8462 | 0.9533 | 0.7114 | 0.6805 | max_seq=2048 | |
+| v5-rerankers/rerank-bge-m3-top20 | 2026-10-08 | 0.6033 | 0.7951 | 0.8692 | 0.9533 | 0.7443 | 0.7151 | max_seq=2048 | |
+| v5-rerankers/rerank-medcpt-top20 | 2026-10-08 | 0.6434 | 0.8357 | 0.8792 | 0.9533 | 0.7738 | 0.7459 | max_seq=2048 | |
+| v5-rerankers/rerank-qwen3-0.6b-top20 | 2026-10-08 | 0.6443 | 0.8093 | 0.8766 | 0.9533 | 0.7690 | 0.7427 | max_seq=2048 | |
