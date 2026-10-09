@@ -1,37 +1,159 @@
 # RAG-Eval SciFact
 
-Banc d'évaluation qui compare des stratégies de retrieval sur BEIR SciFact (5183 docs scientifiques), avec des métriques codées à la main.
+Banc d'évaluation du retrieval sur BEIR SciFact : 5 183 résumés d'articles scientifiques, 300 affirmations à vérifier, et des métriques codées à la main. Le dépôt est tenu comme un cahier de labo. Chaque campagne commence par une prédiction écrite et commitée, se termine par un rapport, et tous ses runs sont archivés dans `results/`.
 
 ## Résultats
 
-| Stratégie | nDCG@10 | Recall@10 | MRR |
+nDCG@10 du meilleur système de chaque étape.
+
+| Système | 188 affirmations avec preuve | 300 affirmations | Campagne |
 |---|---|---|---|
-| Dense MiniLM, document tronqué à 256 tokens (référence) | 0,645 | 0,783 | 0,611 |
-| BM25, document entier | 0,655 | 0,779 | 0,626 |
-| Dense MiniLM, passages | 0,676 | 0,817 | 0,641 |
-| Dense Qwen3, abstract entier, avec reranker | 0,700 | 0,836 | 0,671 |
-| Hybride Qwen3 passages + BM25, union | 0,731 | 0,857 | 0,703 |
-| Dense Qwen3, passages | 0,732 | 0,854 | 0,701 |
+| Dense MiniLM, document tronqué à 256 tokens (référence) | 0,774 | 0,645 | v1, v2-grid |
+| Dense Qwen3-Embedding-0.6B, passages de 128 tokens | 0,873 | 0,732 | v2-grid |
+| Dense Qwen3-Embedding-4B, passages de 128 tokens | 0,907 | 0,791 | v4-leviers |
+| Qwen3-Embedding-0.6B, passages, puis Qwen3-Reranker-0.6B sur les 20 premiers documents | 0,910 | 0,769 | v5-rerankers |
 
-Détail des 34 runs et prédiction écrite avant la campagne : [results/v2-grid/RAPPORT.md](results/v2-grid/RAPPORT.md), [results/v2-grid/PREDICTION.md](results/v2-grid/PREDICTION.md).
+La colonne « 188 affirmations avec preuve » est la mesure de référence du labo. Pour ces affirmations, les annotateurs de SciFact ont désigné dans le document attendu les phrases qui confirment ou contredisent l'affirmation. Pour les 112 autres, le document attendu est un article cité par l'affirmation, sans aucune phrase de preuve annotée.
 
-## Ce qui est testé
+Ce que les campagnes ont mesuré :
 
-- Modèle d'embedding : `all-MiniLM-L6-v2` ou `Qwen3-Embedding-0.6B`.
-- Retrieval lexical : BM25.
-- Lecture du document : tronqué à 256 tokens, abstract entier, ou passages.
-- Fusion dense + lexical : union ou RRF.
-- Reranker : avec ou sans.
+1. **Le jeu de données mélange deux tâches.** Sur les 339 paires (affirmation, document attendu), 138 confirment, 71 contredisent et 130 n'ont pas de preuve. Le même système (Qwen3-Embedding-0.6B, passages) obtient 0,873 sur les 188 affirmations avec preuve et 0,486 sur les 112 sans preuve. Sur les 188, le document attendu est dans les 100 premiers pour toutes les affirmations.
+2. **Un reranker se juge sur les affirmations avec preuve.** Dans la grille v2-grid, le reranker MiniLM monte le score des 17 stratégies sur les 188 affirmations avec preuve (de +0,002 à +0,100) et le baisse pour les 17 sur les 112 sans preuve. Sur les 300 affirmations réunies, 9 stratégies montent et 8 descendent.
+3. **Parmi quatre leviers testés sur le meilleur système de la grille, un seul change le score.** Le modèle d'embedding plus gros (Qwen3-Embedding-4B) gagne +0,034 (p = 0,002). Retirer l'instruction de requête, chercher avec un faux résumé rédigé par un LLM (HyDE) ou passer à un modèle biomédical (MedCPT) donnent des écarts de 0,011 au plus, avec p > 0,5.
+4. **Un petit reranker sur le petit modèle fait jeu égal avec le gros modèle seul.** Qwen3-Reranker-0.6B posé sur Qwen3-Embedding-0.6B atteint 0,910, contre 0,907 pour Qwen3-Embedding-4B sans reranker. Le reranker MiniLM de la grille, sur la même base, apporte +0,007 (p = 0,67).
 
-34 combinaisons.
+Tous les écarts ci-dessus sont des nDCG@10 sur les 188 affirmations avec preuve, sauf mention contraire. Les p-values viennent d'un test de randomisation apparié.
 
-## Quickstart
+## Protocole
+
+**Données.** BEIR SciFact, split test : 5 183 documents, 300 affirmations, 339 paires (affirmation, document attendu). Le corpus entier est toujours indexé, distracteurs compris. Les étiquettes par paire viennent de la publication d'origine de SciFact ([allenai/scifact](https://github.com/allenai/scifact)) : ses paires correspondent une à une aux qrels BEIR, et la commande qui les rapproche s'arrête si ce n'est plus le cas.
+
+**Trois catégories d'affirmations.** Chaque affirmation est rangée selon l'étiquette de son document attendu.
+
+| Catégorie | Affirmations | Ce que dit le document attendu |
+|---|---|---|
+| confirme | 124 | Des phrases annotées confirment l'affirmation |
+| contredit | 64 | Des phrases annotées la contredisent |
+| sans preuve | 112 | L'article est cité, aucune phrase n'est annotée |
+
+**Métriques.** Recall@1, @5, @10, @100, nDCG@10 et MRR, implémentés dans [`metrics.py`](rag_eval_scifact/metrics.py) et testés. Aucune bibliothèque d'évaluation n'est importée (`pytrec_eval`, `beir`, `ranx`). La fusion RRF et le kappa de Cohen sont codés à la main eux aussi.
+
+**Comparer deux runs.** Test de randomisation apparié sur les scores par affirmation, 10 000 permutations ([`stats.py`](rag_eval_scifact/stats.py)). Avec plusieurs dizaines de runs, des écarts « significatifs » apparaissent par hasard : le labo lit les gros écarts, pas les 0,01.
+
+**Prédiction avant mesure.** Aucune campagne ne se lance tant que son fichier `PREDICTION.md` n'est pas dans le dernier commit. Le lanceur de grille le vérifie et refuse sinon.
+
+**Traçabilité.** Une stratégie est une configuration Hydra ([`conf/`](conf/)), jamais du code modifié. Chaque run écrit un fichier `results/<campagne>/<run>.json.gz` avec sa configuration résolue, l'empreinte du jeu de données, les 100 premiers documents et les métriques de chaque affirmation. Il ajoute une ligne à [`RESULTS.md`](RESULTS.md) et un run MLflow avec une trace par affirmation. Une campagne terminée porte un tag git. Un run qui n'est pas commité n'existe pas.
+
+**Machine.** Les runs tournent en local sur un Mac de 16 Go. Les LLM locaux passent par Ollama.
+
+## Campagnes
+
+| Campagne | Question | Runs | Prédiction | Rapport |
+|---|---|---|---|---|
+| `v1-dense` | Que vaut un retrieval dense simple ? | 1 | | [RESULTS.md](RESULTS.md) |
+| `v2-grid` | Quelle combinaison de modèle, d'unité de lecture, de fusion et de reranker ? | 34 | [prédiction](results/v2-grid/PREDICTION.md) | [rapport](results/v2-grid/RAPPORT.md), [par catégorie](results/v2-grid/RAPPORT-PAR-CATEGORIE.md) |
+| `v3-juge` | Un juge LLM lit-il les documents comme les annotateurs ? | 438 paires jugées, 2 juges | [prédiction](results/v3-juge/PREDICTION.md) | [rapport](results/v3-juge/RAPPORT.md) |
+| `v4-leviers` | Qu'est-ce qui fait monter le score sur les affirmations avec preuve ? | 5 | [prédiction](results/v4-leviers/PREDICTION.md) | [par catégorie](results/v4-leviers/RAPPORT-PAR-CATEGORIE.md) |
+| `v5-rerankers` | Un meilleur reranker rattrape-t-il un plus gros modèle ? | 5 sur 6 | [prédiction](results/v5-rerankers/PREDICTION.md) | [par catégorie](results/v5-rerankers/RAPPORT-PAR-CATEGORIE.md) |
+
+### v1-dense : la référence
+
+`all-MiniLM-L6-v2`, un vecteur par document, texte tronqué à 256 tokens (71 % des documents dépassent cette longueur).
+
+| R@1 | R@5 | R@10 | R@100 | nDCG@10 | MRR |
+|---|---|---|---|---|---|
+| 0,482 | 0,738 | 0,783 | 0,925 | 0,645 | 0,611 |
+
+### v2-grid : 34 stratégies
+
+Deux modèles d'embedding (`all-MiniLM-L6-v2`, `Qwen3-Embedding-0.6B`), BM25, trois unités de lecture (document tronqué à 256 tokens, résumé entier, passages de 128 tokens regroupés par document), deux fusions dense + BM25 (union, RRF), avec ou sans reranker `ms-marco-MiniLM-L-6-v2` sur les 100 premiers documents.
+
+| Stratégie | nDCG@10, 188 avec preuve | nDCG@10, 300 | Recall@10, 300 | MRR, 300 |
+|---|---|---|---|---|
+| Dense MiniLM, document tronqué à 256 tokens (référence) | 0,774 | 0,645 | 0,783 | 0,611 |
+| BM25, document entier | 0,815 | 0,655 | 0,779 | 0,626 |
+| Dense MiniLM, passages | 0,809 | 0,676 | 0,817 | 0,641 |
+| Dense Qwen3, résumé entier, avec reranker | 0,876 | 0,700 | 0,836 | 0,671 |
+| Hybride Qwen3 passages + BM25, union | 0,865 | 0,731 | 0,857 | 0,703 |
+| Dense Qwen3, passages | 0,873 | 0,732 | 0,854 | 0,701 |
+
+### v3-juge : pourquoi un document est attendu
+
+Deux juges LLM lisent chaque paire (affirmation, document) et rendent un verdict : confirme, contredit, ou information insuffisante. Le juge de référence est Claude, le juge local est `llama3.1:8b` par Ollama, avec le même prompt.
+
+| | Juge Claude | Juge local |
+|---|---|---|
+| Accord avec les annotateurs de SciFact sur les documents attendus | 85,8 % | 63,3 % |
+| Accord entre les deux juges | 63,6 % (kappa 0,47) | |
+
+Le juge Claude donne aussi un niveau de lecture à chaque document attendu qui porte une preuve : la preuve se lit mot pour mot (direct), elle demande de connaître un terme scientifique équivalent (vocabulaire), ou elle demande un raisonnement. Nombre de documents attendus classés dans les 5 premiers, par niveau :
+
+| Système | Direct (60) | Vocabulaire (55) | Raisonnement (71) |
+|---|---|---|---|
+| Qwen3-Embedding-0.6B, passages | 60 | 51 | 63 |
+| Qwen3-Embedding-4B, passages | 59 | 55 | 65 |
+| Qwen3-Embedding-0.6B + Qwen3-Reranker-0.6B | 58 | 54 | 66 |
+
+Le juge a aussi lu les documents classés devant le document attendu : il estime que 38 d'entre eux sur 104 répondent à l'affirmation, sur 28 affirmations.
+
+### v4-leviers : un levier à la fois
+
+Référence : Qwen3-Embedding-0.6B, passages, dense seul, sans reranker. Chaque run ne change qu'un levier.
+
+| Levier | nDCG@10, 188 avec preuve | Écart | p | nDCG@10, 300 |
+|---|---|---|---|---|
+| Référence | 0,873 | | | 0,732 |
+| Sans instruction de requête | 0,867 | -0,006 | 0,62 | 0,703 |
+| HyDE (faux résumé rédigé par `llama3.1:8b`) | 0,875 | +0,002 | 0,87 | 0,740 |
+| MedCPT (modèle biomédical) | 0,862 | -0,011 | 0,57 | 0,728 |
+| Qwen3-Embedding-4B | 0,907 | +0,034 | 0,002 | 0,791 |
+
+### v5-rerankers : le deuxième étage
+
+Même premier étage que la référence de v4-leviers. Chaque reranker relit les 20 premiers documents.
+
+| Reranker | nDCG@10, 188 avec preuve | Écart | p | nDCG@10, 300 |
+|---|---|---|---|---|
+| Aucun | 0,873 | | | 0,732 |
+| `ms-marco-MiniLM-L-6-v2` | 0,880 | +0,007 | 0,67 | 0,711 |
+| `MedCPT-Cross-Encoder` | 0,900 | +0,027 | 0,058 | 0,774 |
+| `bge-reranker-v2-m3` | 0,904 | +0,032 | 0,016 | 0,744 |
+| `Qwen3-Reranker-0.6B` | 0,910 | +0,038 | 0,009 | 0,769 |
+
+Le sixième run, `Qwen3-Reranker-4B`, n'a pas abouti : le modèle ne tient pas en mémoire sur la machine du labo.
+
+## Prédictions face aux mesures
+
+Les prédictions sont écrites à l'instinct avant chaque campagne et ne sont jamais corrigées après coup.
+
+| Campagne | Prédiction | Mesure |
+|---|---|---|
+| v2-grid | Le meilleur nDCG@10 sera autour de 0,75, et 0,80 est hors de portée | 0,732 sur les 300 affirmations |
+| v2-grid | Un reranker améliore les 17 stratégies | Sur les 300 affirmations, 9 montent et 8 descendent |
+| v2-grid | Avec la meilleure stratégie, plus aucun document attendu hors des 100 premiers | 14 affirmations restent hors des 100 premiers, toutes sans preuve |
+| v3-juge | Accord du juge Claude avec les annotateurs : plus de 85 % espéré, 70 % redouté | 85,8 % |
+| v3-juge | Plus de 50 des documents classés devant le document attendu répondent à l'affirmation | 38 sur 104 selon le juge Claude |
+| v4-leviers | HyDE fera moins bien, au mieux aussi bien | +0,002 (p = 0,87) |
+| v4-leviers | Qwen3-Embedding-4B fera un peu mieux, +0,02 serait déjà excellent | +0,034 (p = 0,002) |
+| v4-leviers | MedCPT sera en dessous de la référence | -0,011 (p = 0,57) |
+| v5-rerankers | Aucun reranker posé sur le petit modèle n'atteint le gros modèle seul (0,907) | Qwen3-Reranker-0.6B : 0,910 |
+| v5-rerankers | Le meilleur reranker sera Qwen3-Reranker-4B | Non mesuré |
+
+## Limites
+
+- Un seul jeu de données et 300 affirmations. Tous les choix sont faits sur le jeu qui sert à mesurer ; le split d'entraînement de SciFact n'a pas encore servi à les vérifier.
+- Chaque p-value compare un run à sa référence. Aucune correction pour comparaisons multiples n'est appliquée.
+- Les niveaux de lecture viennent d'un juge LLM, pas d'annotateurs humains. Ce juge est d'accord avec les annotateurs de SciFact dans 85,8 % des cas.
+- `Qwen3-Reranker-4B` n'est pas mesuré, et la combinaison de Qwen3-Embedding-4B avec un reranker non plus.
+- Le banc mesure le retrieval seul. Aucune génération de réponse n'est évaluée.
+
+## Reproduire
 
 ```bash
-# 1. Environnement Python
+# 1. Environnement (Python 3.11 ou plus)
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -r requirements.txt -r requirements-dev.txt
 
 # 2. Données BEIR SciFact
 mkdir -p data/scifact
@@ -42,47 +164,49 @@ mv data/scifact_tmp/scifact/queries.jsonl data/scifact/
 mv data/scifact_tmp/scifact/qrels data/scifact/
 rm -rf data/scifact_tmp scifact.zip
 
-# 3. Ingestion (embedding + indexation ChromaDB) — ~2 min
-python -m rag_eval_scifact.ingest
-
-# 4. Run d'évaluation
-python -m rag_eval_scifact.run_eval
-
-# 5. Tests
+# 3. Tests
 pytest
+
+# 4. Voir les runs d'une campagne, puis la lancer
+python -m rag_eval_scifact.run_grid --list --campagne v5-rerankers
+python -m rag_eval_scifact.run_grid --campagne v5-rerankers
+
+# 5. Rapport par catégorie, avec écart et p-value face à une référence
+python -m rag_eval_scifact.run_category_report --campagne v5-rerankers --reference qwen3-passages-sans-reranker
 ```
 
-Le dossier `data/scifact/` doit contenir `corpus.jsonl`, `queries.jsonl`, et `qrels/test.tsv`.
+Une campagne relancée saute les runs dont le fichier de résultats existe déjà. Les embeddings et les classements de premier étage sont mis en cache hors du dépôt.
 
-## Commandes
+Pour explorer les résultats :
 
-| Commande | Description |
-|----------|-------------|
-| `python -m rag_eval_scifact.ingest` | Embedde les 5183 docs et indexe dans ChromaDB (cosinus). A faire une seule fois. Produit `chroma_data/`. |
-| `python -m rag_eval_scifact.run_eval` | Retrieval dense (300 requêtes test) + calcul des 6 métriques + artefacts (`results/*.json` + `RESULTS.md`). |
-| `python -m rag_eval_scifact.run_campaign` | Lance un run de campagne depuis `conf/config.yaml` (lanceur Hydra standard). Sans argument : reproduit v1 à l'identique. Surcharge CLI : `python -m rag_eval_scifact.run_campaign top_k=10`. Plusieurs stratégies en une commande : `python -m rag_eval_scifact.run_campaign --multirun top_k=10,20`. Aide et valeurs surchargeables : `--help`. Artefacts : `results/<campagne>/<run>.json.gz` + `RESULTS.md`, et le run est journalisé dans MLflow (expérience = campagne). Les embeddings de documents et le classement de premier étage sont mis en cache sous `cache_dir` (défaut `~/.cache/rag-eval-scifact`) : un run identique ne recalcule ni l'un ni l'autre. |
-| `mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5001` | Ouvre l'interface MLflow (http://127.0.0.1:5001) sur le tracking SQLite local `mlflow.db`. Pour relire une requête d'un run, ouvrir ce run puis son onglet **Traces** : une trace par requête (claim, top-10 remonté, docs attendus, rang du premier attendu dans le top 100 ou son absence) ; désactivable via `tracing=false`. |
-| `python -m rag_eval_scifact.compare_runs <run_a> <run_b>` | Compare deux runs de campagne (`.json` ou `.json.gz`) par test de randomisation apparié (nDCG@10 et MRR, codé à la main). Options : `--metric`, `--n-permutations`, `--seed`. |
-| `python -m rag_eval_scifact.run_grid --list --campagne <nom>` | Affiche les combinaisons déclarées dans `conf/grid/<nom>.yaml` (une par ligne, nom de run lisible) puis leur nombre, sans rien lancer. Sans `--campagne` : `v2-grid` (34 runs), comme avant. Campagne sans fichier de grille : message nommant le fichier attendu, sans trace Python. |
-| `python -m rag_eval_scifact.run_grid --campagne <nom>` | Lance chaque combinaison de `conf/grid/<nom>.yaml` comme un run de cette campagne (défaut `v2-grid`). `--run <run_name>` ne lance que ce run nommé (nom inconnu : liste les noms connus de la campagne). Refuse de lancer toute campagne sauf `dev` tant que `results/<nom>/PREDICTION.md` n'est pas dans le dernier commit. Relancée sur une campagne interrompue, saute les combinaisons dont le fichier de résultats existe déjà et le dit. |
-| `python -m rag_eval_scifact.run_grid --campagne <nom> --essai <run_name>` | Essai rapide d'un run nommé : encode les passages des 50 premiers documents du corpus, affiche leur nombre, la durée et son extrapolation au corpus entier en minutes. N'écrit aucun fichier de résultats ni run MLflow. |
-| `python -m rag_eval_scifact.run_grid --campagne <nom> --essai-rerank <run_name>` | Essai rapide du reranker d'un run nommé : relit le classement de premier étage en cache (inchangé), reclasse les `rerank.top_n` premiers documents des 10 premières affirmations avec le reranker réel du run, affiche la durée et son extrapolation aux 300 affirmations en minutes. Refuse un run sans `rerank.name=cross-encoder`. N'écrit aucun fichier de résultats ni run MLflow. |
-| `python -m rag_eval_scifact.run_hyde` | Rédige, pour chacune des 300 affirmations du jeu de test, un faux résumé d'article avec le modèle local llama3.1:8b par Ollama (température 0, graine fixe) — méthode HyDE. Écrit `results/v4-leviers/hyde.json` (identifiant, texte de l'affirmation, texte rédigé, modèle, durée). Affiche la progression toutes les 10 affirmations. Reprise sur une relance interrompue : les affirmations déjà rédigées ne le sont pas à nouveau. S'arrête sans trace Python, sans enregistrer l'affirmation en cours, si Ollama ne répond pas ou rend un texte vide. `--limit` borne le nombre d'affirmations rédigées. Le run `qwen3-passages-hyde` de la grille `v4-leviers` (`retriever.query_source=hyde`) cherche avec ce texte à la place de l'affirmation, sans instruction de requête ; refuse de se lancer si `hyde.json` est absent ou contient moins de 300 textes. |
-| `python -m rag_eval_scifact.run_report <campagne>` | Écrit `results/<campagne>/RAPPORT.md` : tableau des runs de la campagne trié par nDCG@10 décroissant, avec les 6 métriques, l'écart et la p-value du test apparié face à `results/v1-rejeu/baseline`, la part par bucket v1, la part tronquée, la latence et la durée d'indexation. |
-| `python -m rag_eval_scifact.run_origin_labels` | Écrit `results/etiquettes-origine.json` : pour chacune des 339 paires (claim, document attendu) du split test, l'étiquette des annotateurs d'origine SciFact (SUPPORT, CONTRADICT ou SANS_PREUVE) et, pour les deux premières, le texte de ses phrases-preuve, plus la catégorie de chaque claim (confirme, contredit, sans preuve). S'arrête sans rien écrire si ces paires ne correspondent pas exactement à `data/scifact/qrels/test.tsv`. |
-| `python -m rag_eval_scifact.run_category_report` | Écrit `results/v2-grid/RAPPORT-PAR-CATEGORIE.md` à partir de `results/etiquettes-origine.json` et des 34 runs commités de `v2-grid` : pour chaque run et chaque catégorie de claim (confirme, contredit, sans preuve), l'effectif et les taux rang 1 / top 10 / top 100 ; le nDCG@10 sur les 300 claims, les 188 claims avec preuve et les 112 claims sans preuve ; et, par stratégie de base, l'écart de nDCG@10 avec et sans reranker sur ces deux derniers ensembles, avec la p-value du test apparié déjà codé à la main. Sans option, inchangé à l'identique (EXE-142). Option `--campagne <nom>` : écrit le même rapport sous `results/<nom>/`, en ajoutant pour chaque run la part des goldens retrouvés dans les 5 et les 10 premiers par groupe de la page dashboard « Niveaux de lecture » ; la section reranker est omise si aucun run de la campagne n'en porte un. Option `--reference <run>` : ajoute l'écart de nDCG@10 et sa p-value de chaque autre run face à ce run, sur les 188 claims avec preuve. Campagne nommée sans aucun run : une phrase le dit, sans trace Python. |
-| `python -m rag_eval_scifact.generate_passage_detail <run.json.gz>` | Pour un run dense ou BM25 en unité passages, sans reranker : fichier dérivé `<run>.passages.json.gz` listant, pour chaque requête et chaque document attendu ou du top 10, la liste de ses passages avec le score de chacun. Lit le cache d'embeddings du run (dense) sans jamais le recalculer ; s'arrête sans rien écrire si ce cache est absent, si le `dataset_hash` ne correspond plus au corpus, ou si le meilleur score de passage ne retrouve pas le score du run. Option : `--cache-dir` (défaut `~/.cache/rag-eval-scifact`). |
-| `pytest` | Tests unitaires des métriques (recall, nDCG, MRR), des artefacts de campagne, du suivi MLflow, de la comparaison de runs, de la grille v2-grid et du rapport de campagne. |
-| `python -m rag_eval_scifact.run_judge_pairs` | Écrit `results/<campagne>/paires.json` (défaut : campagne `v3-juge`), lu dans le run `dense-qwen3-passages-sans-reranker` et dans `results/etiquettes-origine.json` : deux familles de paires, chacune pouvant porter les deux — « attendu » (chaque paire claim/document attendu, 339, avec son étiquette d'origine) et « devant » (pour chaque claim avec preuve, les documents classés avant le premier document SUPPORT ou CONTRADICT, 5 au plus). Chaque paire porte son champ `famille` (`attendu`, `devant`, ou les deux). |
-| `python -m rag_eval_scifact.run_judge --juge local` | Juge les paires d'une campagne (défaut : `v3-juge`) avec le juge local : un appel Ollama par paire (`--model`, défaut `llama3.1:8b`), température 0, graine fixe. Le prompt demande en plus, pour SUPPORTS/REFUTES, le niveau de lecture (DIRECT, VOCABULARY, REASONING ; NONE pour NOT_ENOUGH_INFO) — un niveau incohérent avec le verdict compte comme illisible. Écrit `results/<campagne>/jugements-local.json`, journalise un run MLflow (expérience = campagne) avec une trace par jugement. Reprise sur une campagne interrompue : les paires déjà jugées ne sont pas rejugées. `--limit` borne le nombre de paires jugées. Refuse de juger `v3-juge` tant que `results/v3-juge/PREDICTION.md` n'est pas dans le dernier commit. |
-| `python -m rag_eval_scifact.run_judge --juge claude` | Même commande, avec le juge de référence Claude (`--model`, défaut `sonnet`) : un appel Claude Code non interactif par paire, sans outils, même prompt octet pour octet que le juge local (exception documentée de `.claude/rules/methodologie.md`). Écrit `results/<campagne>/jugements-claude.json`. |
-| `python -m rag_eval_scifact.run_judge --juge etapes` | Même commande, avec le juge par étapes : un graphe à quatre nœuds par paire (claim, document, verdict, cause), un appel Ollama par nœud réellement traversé. Ne rend aucun niveau de lecture (prompts inchangés depuis EXE-121). Écrit `results/<campagne>/jugements-etapes.json`, trace MLflow avec une étape enfant par nœud appelé. |
-| `python -m rag_eval_scifact.run_judge_report` | Écrit `results/<campagne>/RAPPORT.md` (défaut : campagne `v3-juge`) à partir des jugements présents : effectifs de verdicts et durée moyenne par juge, ce que chaque juge dit du jeu de données (documents attendus et intrus classés devant), le tableau croisé verdict / étiquette d'origine et la part d'accord sur les documents attendus, les verdicts sur les documents classés devant et les claims où l'un d'eux répond, la répartition des niveaux de lecture (« sans niveau » pour le juge par étapes), le tableau croisé entre juges, la part d'accord et le kappa de Cohen (codé à la main) entre chaque paire de juges, les causes du juge par étapes, et le croisement avec les étiquettes de `results/v1-annotations.json` et `results/v1-deep-miss-annotations.json`. Fonctionne avec un, deux ou trois juges présents et dit lesquels manquent. |
-| `pip install -e ".[dashboard]"` | Installe les dépendances dashboard (streamlit, plotly). |
-| `streamlit run dashboard.py` | Lance le dashboard d'exploration des résultats. Page **Comparer deux runs** : choisit une campagne (dossier de `results/` avec des runs au format campagne) puis deux de ses runs, et affiche leurs 6 métriques côte à côte, le nombre de claims où le meilleur rang d'un document attendu s'améliore / se dégrade / ne change pas entre les deux runs, la liste filtrable des claims dont le rang change, et pour un claim choisi le détail — documents attendus et top 10 de chaque run, côte à côte. Pour un run en unité passages dont le fichier dérivé existe (`generate_passage_detail`), le texte d'un document attendu ou du top 10 montre le score de chaque passage et surligne celui qui a fait remonter le document ; sans fichier dérivé, la page l'indique (« passages non disponibles pour ce run ») et affiche le texte sans coupure. |
+```bash
+streamlit run dashboard.py                                      # runs commités : comparaison de deux runs, niveaux de lecture
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5001   # runs lancés sur la machine, une trace par affirmation
+```
 
-## Méthode
+Les étiquettes par catégorie (`results/etiquettes-origine.json`) sont commitées. Pour les régénérer, il faut l'archive `data.tar.gz` de [allenai/scifact](https://github.com/allenai/scifact) décompressée dans `data/scifact/origine/`.
 
-- **Éval fait-main** : métriques, fusion RRF et test statistique apparié sont codés à la main, sans lib d'évaluation (`pytrec_eval`, `beir`, `ranx`, ...). Voir [.claude/rules/methodologie.md](.claude/rules/methodologie.md).
-- **Ollama uniquement** : zéro API LLM payante, un LLM local passe par Ollama. Voir [.claude/rules/methodologie.md](.claude/rules/methodologie.md).
-- **Run non commité = run inexistant** : `RESULTS.md` + `results/{campagne}/{run}.json.gz` doivent être commités ensemble, avec un tag git par campagne. Voir [.claude/rules/versioning.md](.claude/rules/versioning.md).
+Toutes les commandes du dépôt sont décrites dans [docs/COMMANDES.md](docs/COMMANDES.md).
+
+## Structure du dépôt
+
+| Chemin | Contenu |
+|---|---|
+| [`rag_eval_scifact/`](rag_eval_scifact/) | Pipeline : découpage, BM25, retrieval, fusion, reranker, métriques, test statistique, juges, rapports |
+| [`conf/`](conf/) | Configuration Hydra par défaut et une grille par campagne |
+| [`results/`](results/) | Un dossier par campagne : prédiction, runs compressés, rapports |
+| [`RESULTS.md`](RESULTS.md) | Journal de tous les runs, une ligne par run |
+| [`tests/`](tests/) | Tests unitaires du pipeline, des rapports et du dashboard |
+| [`dashboard.py`](dashboard.py) | Dashboard Streamlit |
+| [`.claude/rules/`](.claude/rules/) | Règles du projet, lues par l'agent de code à chaque tour |
+
+## Règles du projet
+
+- **Éval codée à la main** : métriques, fusion RRF et test statistique sans bibliothèque d'évaluation. Voir [methodologie.md](.claude/rules/methodologie.md).
+- **LLM locaux** : aucun appel à une API payante, les LLM passent par Ollama. Seule exception, le juge de référence de v3-juge, qui appelle Claude sans clé d'API. Voir [methodologie.md](.claude/rules/methodologie.md).
+- **Run non commité = run inexistant** : `RESULTS.md` et `results/<campagne>/<run>.json.gz` sont commités ensemble. Voir [versioning.md](.claude/rules/versioning.md).
+- **Invariants de mesure** : similarité cosinus, corpus entier indexé, troncature notée à chaque run. Voir [invariants.md](.claude/rules/invariants.md).
+
+## Stack
+
+Python, sentence-transformers, ChromaDB, rank_bm25, Hydra, MLflow, Streamlit, Ollama, LangGraph.
