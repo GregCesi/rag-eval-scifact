@@ -594,3 +594,76 @@ def test_v5_rerankers_only_the_4b_run_overrides_the_batch_size():
             assert cfg.rerank.batch_size == 4
         else:
             assert cfg.rerank.batch_size == 32
+
+
+# ---------------------------------------------------------------------------
+# EXE-168 critères 1 à 5 — v6-4b-rerankers : trois combinaisons, même
+# recherche que `qwen3-4b-passages` de v4-leviers, reranker repris de
+# v5-rerankers run à run
+# ---------------------------------------------------------------------------
+
+V6_4B_RERANKERS_RUN_NAMES = {
+    "qwen3-4b-sans-reranker",
+    "qwen3-4b-rerank-qwen3-0.6b-top20",
+    "qwen3-4b-rerank-qwen3-4b-top20",
+}
+
+
+def test_load_grid_combos_reads_v6_4b_rerankers_three_named_runs():
+    combos = load_grid_combos(campagne="v6-4b-rerankers")
+    run_names = {c["run_name"] for c in combos}
+    assert run_names == V6_4B_RERANKERS_RUN_NAMES
+
+
+def test_v6_4b_rerankers_runs_match_v4_leviers_4b_passages_retriever_key_for_key():
+    v4_combos = load_grid_combos(campagne="v4-leviers")
+    v6_combos = load_grid_combos(campagne="v6-4b-rerankers")
+
+    reference = next(c for c in v4_combos if c["run_name"] == "qwen3-4b-passages")
+    cfg_reference = _compose_combo(reference)
+
+    for combo in v6_combos:
+        cfg = _compose_combo(combo)
+        assert cfg.retriever == cfg_reference.retriever, combo["run_name"]
+        assert cfg.retriever.batch_size == 2
+
+
+def test_v6_4b_rerankers_sans_reranker_run_has_no_reranker():
+    v6_combos = load_grid_combos(campagne="v6-4b-rerankers")
+    combo = next(c for c in v6_combos if c["run_name"] == "qwen3-4b-sans-reranker")
+
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank is None
+
+
+def test_v6_4b_rerankers_rerank_qwen3_06b_run_matches_v5_rerankers_key_for_key():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+    v6_combos = load_grid_combos(campagne="v6-4b-rerankers")
+
+    reference = next(c for c in v5_combos if c["run_name"] == "rerank-qwen3-0.6b-top20")
+    combo = next(
+        c for c in v6_combos if c["run_name"] == "qwen3-4b-rerank-qwen3-0.6b-top20"
+    )
+
+    cfg_reference = _compose_combo(reference)
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank == cfg_reference.rerank
+
+
+def test_v6_4b_rerankers_rerank_qwen3_4b_run_matches_v5_rerankers_key_for_key():
+    v5_combos = load_grid_combos(campagne="v5-rerankers")
+    v6_combos = load_grid_combos(campagne="v6-4b-rerankers")
+
+    reference = next(c for c in v5_combos if c["run_name"] == "rerank-qwen3-4b-top20")
+    combo = next(
+        c for c in v6_combos if c["run_name"] == "qwen3-4b-rerank-qwen3-4b-top20"
+    )
+
+    cfg_reference = _compose_combo(reference)
+    cfg = _compose_combo(combo)
+
+    assert cfg.rerank == cfg_reference.rerank
+    assert cfg.rerank.half_precision is True
+    assert cfg.rerank.batch_size == 4

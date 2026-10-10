@@ -311,6 +311,36 @@ def test_launch_refuses_v5_rerankers_without_committed_prediction(capsys, monkey
     assert calls == []
 
 
+def test_list_mode_for_v6_4b_rerankers_shows_its_three_runs_and_count(capsys):
+    run_grid_module.main(["--list", "--campagne", "v6-4b-rerankers"])
+
+    out = capsys.readouterr().out
+    for name in [
+        "qwen3-4b-sans-reranker",
+        "qwen3-4b-rerank-qwen3-0.6b-top20",
+        "qwen3-4b-rerank-qwen3-4b-top20",
+    ]:
+        assert name in out
+    assert "3 combinaison(s)" in out
+
+
+def test_launch_refuses_v6_4b_rerankers_without_committed_prediction(
+    capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        run_grid_module, "_prediction_committed", lambda campagne: False
+    )
+    calls = []
+    monkeypatch.setattr(run_campaign_module, "main", lambda cfg: calls.append(cfg))
+
+    with pytest.raises(SystemExit):
+        run_grid_module.main(["--campagne", "v6-4b-rerankers"])
+
+    out = capsys.readouterr().out
+    assert "results/v6-4b-rerankers/PREDICTION.md" in out
+    assert calls == []
+
+
 def test_essai_with_unknown_run_name_lists_known_names(capsys, monkeypatch):
     monkeypatch.setattr(
         run_grid_module,

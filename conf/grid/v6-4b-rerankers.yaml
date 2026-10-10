@@ -1,0 +1,48 @@
+# Grille v6-4b-rerankers (EXE-168) : trois combinaisons, même recherche que
+# `qwen3-4b-passages` de `conf/grid/v4-leviers.yaml`, clé pour clé — y compris
+# la taille de lot 2 (Mac 16 Go, H3 de v4-leviers). Les deux runs avec
+# reranker reprennent, clé pour clé, le reranker de `rerank-qwen3-0.6b-top20`
+# et `rerank-qwen3-4b-top20` de `conf/grid/v5-rerankers.yaml` — demi-précision
+# et lots de 4 compris pour le Qwen3-Reranker-4B.
+runs:
+  - run_name: qwen3-4b-sans-reranker
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-4B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=2
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank=null
+  - run_name: qwen3-4b-rerank-qwen3-0.6b-top20
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-4B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=2
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank.name=cross-encoder
+      - rerank.model=Qwen/Qwen3-Reranker-0.6B
+      - rerank.top_n=20
+      - "rerank.instruction='Given a scientific claim, retrieve documents that support or refute it'"
+  - run_name: qwen3-4b-rerank-qwen3-4b-top20
+    overrides:
+      - retriever.name=dense
+      - retriever.model=Qwen/Qwen3-Embedding-4B
+      - retriever.max_seq_length=2048
+      - retriever.unit=passages
+      - retriever.chunk_size=128
+      - retriever.chunk_overlap=32
+      - retriever.batch_size=2
+      - "retriever.query_instruction='Instruct: Given a scientific claim, retrieve documents that support or refute it. Query: '"
+      - rerank.name=cross-encoder
+      - rerank.model=Qwen/Qwen3-Reranker-4B
+      - rerank.top_n=20
+      - "rerank.instruction='Given a scientific claim, retrieve documents that support or refute it'"
+      - rerank.half_precision=true
+      - rerank.batch_size=4
