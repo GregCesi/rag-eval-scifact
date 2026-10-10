@@ -9,6 +9,7 @@ Campagne : v5-rerankers
 | rerank-medcpt-top20 | 124 | 0.8468 | 0.9758 | 1.0000 |
 | rerank-minilm-top20 | 124 | 0.8306 | 0.9677 | 1.0000 |
 | rerank-qwen3-0.6b-top20 | 124 | 0.8710 | 0.9839 | 1.0000 |
+| rerank-qwen3-4b-top20 | 124 | 0.8548 | 0.9839 | 1.0000 |
 
 ## contredit
 
@@ -19,6 +20,7 @@ Campagne : v5-rerankers
 | rerank-medcpt-top20 | 64 | 0.7656 | 0.9844 | 1.0000 |
 | rerank-minilm-top20 | 64 | 0.7031 | 0.9844 | 1.0000 |
 | rerank-qwen3-0.6b-top20 | 64 | 0.7656 | 1.0000 | 1.0000 |
+| rerank-qwen3-4b-top20 | 64 | 0.8906 | 0.9844 | 1.0000 |
 
 ## sans preuve
 
@@ -29,6 +31,7 @@ Campagne : v5-rerankers
 | rerank-medcpt-top20 | 112 | 0.4018 | 0.7321 | 0.8750 |
 | rerank-minilm-top20 | 112 | 0.2411 | 0.6607 | 0.8750 |
 | rerank-qwen3-0.6b-top20 | 112 | 0.4018 | 0.7054 | 0.8750 |
+| rerank-qwen3-4b-top20 | 112 | 0.3661 | 0.7411 | 0.8750 |
 
 ## nDCG@10 par ensemble de claims
 
@@ -39,6 +42,7 @@ Campagne : v5-rerankers
 | rerank-medcpt-top20 | 0.7738 | 0.8996 | 0.5577 |
 | rerank-minilm-top20 | 0.7114 | 0.8801 | 0.4358 |
 | rerank-qwen3-0.6b-top20 | 0.7690 | 0.9103 | 0.5391 |
+| rerank-qwen3-4b-top20 | 0.7836 | 0.9266 | 0.5418 |
 
 ## Écart de nDCG@10 face à la référence qwen3-passages-sans-reranker (188 claims avec preuve)
 
@@ -48,6 +52,7 @@ Campagne : v5-rerankers
 | rerank-medcpt-top20 | +0.0268 | 0.0579 |
 | rerank-minilm-top20 | +0.0073 | 0.6741 |
 | rerank-qwen3-0.6b-top20 | +0.0375 | 0.0092 |
+| rerank-qwen3-4b-top20 | +0.0538 | 0.0001 |
 
 Lecture (`.claude/rules/methodologie.md`) : « avec plusieurs dizaines de runs, des écarts « significatifs » apparaissent par hasard. On lit les gros écarts, pas les 0,01. »
 
@@ -111,5 +116,17 @@ Lecture (`.claude/rules/methodologie.md`) : « avec plusieurs dizaines de runs, 
 | Avec preuve, ne répond pas | 12/18 | 0.6667 | 15/18 | 0.8333 |
 | Sans preuve, répond | 14/22 | 0.6364 | 18/22 | 0.8182 |
 | Sans preuve, ne répond pas | 60/105 | 0.5714 | 73/105 | 0.6952 |
+| Non jugé | 8/8 | 1.0000 | 8/8 | 1.0000 |
+
+### rerank-qwen3-4b-top20
+
+| groupe | 5 premiers | part (5 premiers) | 10 premiers | part (10 premiers) |
+|---|---|---|---|---|
+| Direct | 60/60 | 1.0000 | 60/60 | 1.0000 |
+| Vocabulaire | 55/55 | 1.0000 | 55/55 | 1.0000 |
+| Raisonnement | 68/71 | 0.9577 | 71/71 | 1.0000 |
+| Avec preuve, ne répond pas | 13/18 | 0.7222 | 14/18 | 0.7778 |
+| Sans preuve, répond | 16/22 | 0.7273 | 18/22 | 0.8182 |
+| Sans preuve, ne répond pas | 65/105 | 0.6190 | 77/105 | 0.7333 |
 | Non jugé | 8/8 | 1.0000 | 8/8 | 1.0000 |
 
